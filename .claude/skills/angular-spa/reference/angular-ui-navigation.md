@@ -1,0 +1,248 @@
+# Angular UI Navigation Patterns
+
+Angular 21+ navigation, sidebar, and expandable section components using daisyUI 5.5.5 + TailwindCSS 4.x.
+All components use standalone, OnPush, and signal-based APIs.
+
+---
+
+## Responsive Navigation (Drawer Sidebar)
+
+```typescript
+import {
+  Component, ChangeDetectionStrategy, signal, input
+} from '@angular/core';
+import { RouterLink, RouterLinkActive } from '@angular/router';
+
+interface NavItem { label: string; path: string; icon?: string; }
+
+@Component({
+  selector: 'app-responsive-nav',
+  imports: [RouterLink, RouterLinkActive],
+  template: `
+    <div class="drawer lg:drawer-open">
+      <input id="nav-drawer" type="checkbox" class="drawer-toggle"
+        [checked]="drawerOpen()" (change)="toggleDrawer($event)" />
+      <div class="drawer-content flex flex-col min-h-screen">
+        <!-- Mobile header (hidden on lg+) -->
+        <header class="navbar bg-base-100 border-b border-base-300 lg:hidden sticky top-0 z-30">
+          <div class="flex-none">
+            <label for="nav-drawer" class="btn btn-square btn-ghost" aria-label="Open navigation">
+              <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 6h16M4 12h16M4 18h16"/>
+              </svg>
+            </label>
+          </div>
+          <div class="flex-1">
+            <span class="text-xl font-bold px-2">{{ title() }}</span>
+          </div>
+        </header>
+        <main class="flex-1 p-4 lg:p-6">
+          <ng-content></ng-content>
+        </main>
+      </div>
+      <!-- Sidebar -->
+      <aside class="drawer-side z-40">
+        <label for="nav-drawer" class="drawer-overlay" aria-label="Close navigation"></label>
+        <div class="bg-base-200 min-h-full w-64 flex flex-col">
+          <div class="p-4 border-b border-base-300">
+            <h1 class="text-xl font-bold">{{ title() }}</h1>
+          </div>
+          <nav class="flex-1 p-4" aria-label="Main navigation">
+            <ul class="menu gap-1">
+              @for (item of navItems(); track item.path) {
+                <li>
+                  <a [routerLink]="item.path" routerLinkActive="active"
+                    [routerLinkActiveOptions]="{ exact: item.path === '/' }"
+                    (click)="drawerOpen.set(false)">
+                    @if (item.icon) { <span aria-hidden="true">{{ item.icon }}</span> }
+                    {{ item.label }}
+                  </a>
+                </li>
+              }
+            </ul>
+          </nav>
+        </div>
+      </aside>
+    </div>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class ResponsiveNavComponent {
+  title = input<string>('App');
+  navItems = input<NavItem[]>([]);
+  protected readonly drawerOpen = signal(false);
+
+  protected toggleDrawer(event: Event): void {
+    this.drawerOpen.set((event.target as HTMLInputElement).checked);
+  }
+}
+```
+
+**Usage:**
+```html
+<app-responsive-nav title="PropertyHarbor" [navItems]="navItems">
+  <!-- page content here — projected into <main> -->
+  <router-outlet />
+</app-responsive-nav>
+```
+
+---
+
+## Expandable Section (Accordion)
+
+```typescript
+import { Component, ChangeDetectionStrategy, input, signal } from '@angular/core';
+
+@Component({
+  selector: 'app-expandable-section',
+  template: `
+    <div class="collapse collapse-arrow bg-base-200 rounded-box">
+      <input type="checkbox"
+        [checked]="isExpanded()"
+        (change)="isExpanded.update(v => !v)"
+        [attr.aria-expanded]="isExpanded()" />
+      <div class="collapse-title text-lg font-medium">
+        {{ title() }}
+        @if (badge()) {
+          <span class="badge badge-sm ml-2">{{ badge() }}</span>
+        }
+      </div>
+      <div class="collapse-content">
+        <div class="pt-2">
+          <ng-content></ng-content>
+        </div>
+      </div>
+    </div>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class ExpandableSectionComponent {
+  title = input.required<string>();
+  badge = input<string>('');
+  defaultExpanded = input<boolean>(false);
+  protected readonly isExpanded = signal(false);
+}
+```
+
+**Usage:**
+```html
+<app-expandable-section title="Maintenance History" badge="3">
+  <!-- content projected here -->
+  <ul class="menu">
+    <li><a>Ticket #001 — Plumbing</a></li>
+  </ul>
+</app-expandable-section>
+```
+
+---
+
+## Breadcrumb Pattern
+
+```typescript
+import { Component, ChangeDetectionStrategy, input } from '@angular/core';
+import { RouterLink } from '@angular/router';
+
+interface BreadcrumbItem { label: string; path?: string; }
+
+@Component({
+  selector: 'app-breadcrumb',
+  standalone: true,
+  imports: [RouterLink],
+  template: `
+    <div class="breadcrumbs text-sm">
+      <ul aria-label="Breadcrumb">
+        @for (item of items(); track item.label; let last = $last) {
+          <li>
+            @if (item.path && !last) {
+              <a [routerLink]="item.path">{{ item.label }}</a>
+            } @else {
+              <span [attr.aria-current]="last ? 'page' : null">{{ item.label }}</span>
+            }
+          </li>
+        }
+      </ul>
+    </div>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class BreadcrumbComponent {
+  items = input.required<BreadcrumbItem[]>();
+}
+```
+
+**Usage:**
+```html
+<app-breadcrumb [items]="[
+  { label: 'Dashboard', path: '/dashboard' },
+  { label: 'Properties', path: '/properties' },
+  { label: '123 Main St' }
+]" />
+```
+
+---
+
+## Tabs Pattern
+
+```typescript
+import {
+  Component, ChangeDetectionStrategy, input, signal, computed
+} from '@angular/core';
+
+interface TabItem { id: string; label: string; }
+
+@Component({
+  selector: 'app-tabs',
+  standalone: true,
+  template: `
+    <div role="tablist" class="tabs tabs-bordered">
+      @for (tab of tabs(); track tab.id) {
+        <button
+          role="tab"
+          type="button"
+          class="tab"
+          [class.tab-active]="activeTab() === tab.id"
+          [attr.aria-selected]="activeTab() === tab.id"
+          [attr.aria-controls]="'tabpanel-' + tab.id"
+          [id]="'tab-' + tab.id"
+          (click)="activeTab.set(tab.id)">
+          {{ tab.label }}
+        </button>
+      }
+    </div>
+    <div class="pt-4">
+      @for (tab of tabs(); track tab.id) {
+        <div
+          role="tabpanel"
+          [id]="'tabpanel-' + tab.id"
+          [attr.aria-labelledby]="'tab-' + tab.id"
+          [hidden]="activeTab() !== tab.id">
+          <ng-content *ngIf="activeTab() === tab.id" />
+        </div>
+      }
+    </div>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class TabsComponent {
+  tabs = input.required<TabItem[]>();
+  protected readonly activeTab = signal('');
+
+  ngOnInit(): void {
+    if (this.tabs().length > 0) {
+      this.activeTab.set(this.tabs()[0].id);
+    }
+  }
+}
+```
+
+---
+
+## Navigation Rules
+
+- Always use `routerLinkActive="active"` — never manually compare `router.url` for active state
+- Drawer sidebar: `lg:drawer-open` makes sidebar always-open on large screens, toggled on small
+- Close the mobile drawer on nav item click: `(click)="drawerOpen.set(false)"`
+- All interactive nav elements need `aria-label` or visible text — icon-only buttons need `aria-label`
+- Breadcrumb last item: `aria-current="page"` required for screen reader context
+- Tabs: `role="tab"` + `aria-selected` + `role="tabpanel"` + `aria-labelledby` are all required

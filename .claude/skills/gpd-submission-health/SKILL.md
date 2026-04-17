@@ -1,0 +1,73 @@
+---
+name: gpd-submission-health
+description: Preflight Google Play releases, validate edits, and verify listing completeness with gpd CLI. Use when shipping to production, troubleshooting a failed Play Store release, validating edit lifecycle before commit, checking release status and version code, verifying screenshots and store listing metadata, uploading deobfuscation mapping, or diagnosing policy declaration issues. Triggers: "Play Store submission", "production release check", "gpd preflight", "submission health", "edit validate", "release not valid", "missing screenshots", "policy declaration", "deobfuscation mapping".
+allowed-tools: Bash, Read
+metadata:
+  triggers: Play Store submission, production release check, gpd preflight, submission health, edit validate, release not valid, missing screenshots, policy declaration, deobfuscation mapping, gpd submit
+  related-skills: gpd-cli-usage, gpd-id-resolver, gpd-release-flow, gpd-metadata-sync
+  domain: mobile-deployment
+  role: specialist
+  scope: deployment
+  output-format: commands
+last-reviewed: "2026-03-15"
+---
+
+# GPD Submission Health
+
+## Iron Law
+
+**NEVER SUBMIT TO PRODUCTION WITHOUT COMPLETING ALL 5 PREFLIGHT CHECKS — A FAILED RELEASE BLOCKS ALL USERS ON THAT TRACK**
+
+Read `reference/submission-preflight-checklist.md` and complete every item before running any production release command.
+
+## Preconditions
+- Auth configured and package name resolved.
+- Build uploaded and available for the target track.
+- Store listing metadata and assets updated.
+
+## Pre-submission Checklist
+
+The full 5-step checklist with commands is in `reference/submission-preflight-checklist.md`.
+
+**Quick reference — all 5 steps must pass before releasing to production:**
+1. Validate edit — `gpd publish edit validate` must return no errors
+2. Confirm release status — version code matches uploaded build
+3. Verify store listing metadata — title, description, contact email present
+4. Verify screenshots and assets — required device types uploaded per locale
+5. Upload deobfuscation mapping — required if ProGuard/R8 is enabled
+
+> For full commands for each step: Read `reference/submission-preflight-checklist.md`
+
+## Submit to production
+```bash
+gpd publish release --package com.example.app --track production --status inProgress --version-code 123
+```
+
+## Common submission issues
+
+### Release not in valid state
+Check:
+1. Version code uploaded and attached to the track.
+2. Edit validation passes.
+3. Required store listing fields present for all locales.
+
+### Missing screenshots or assets
+```bash
+gpd publish images list phoneScreenshots --package com.example.app --locale en-US
+gpd publish images upload icon icon.png --package com.example.app --locale en-US
+```
+
+### Policy declarations not complete
+Some policy/compliance items must be completed in Play Console UI. Confirm in the console if CLI operations pass but submission is blocked.
+
+## Notes
+- Use `gpd publish edit validate` before committing large changes.
+- Use `--dry-run` where available before destructive actions.
+
+## Documentation Sources
+
+| Source | How to Access | Purpose |
+|--------|--------------|---------|
+| gpd CLI help | `gpd publish edit --help`, `gpd publish release --help` | Current validation and release flags |
+| Preflight checklist | Read `reference/submission-preflight-checklist.md` | Full 5-step pre-release commands |
+| gpd-id-resolver skill | Load skill | Resolve package name and track before submitting |

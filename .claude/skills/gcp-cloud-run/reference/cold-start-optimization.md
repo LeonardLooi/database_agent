@@ -1,0 +1,150 @@
+# Cold Start Optimization
+
+Cold starts happen when Cloud Run scales from zero or creates a new instance. The flags and patterns below reduce startup latency.
+
+## Universal Flags (All Stacks)
+
+| Flag | Value | Notes |
+|------|-------|-------|
+| `--cpu-boost` | (no value) | Allocates extra CPU during startup. Most impactful single change. Always set for functions. |
+| `--min-instances` | 0 (staging) / 1 (prod) | min=1 eliminates cold starts; costs money when idle. Use 0 for cost-sensitive staging. |
+| `--cpu` | 1 (light) / 2 (heavy) | Higher CPU ratio speeds startup. Spring Boot benefits from cpu=2. |
+| `--memory` | 256Mi–1Gi | Spring Boot ≥512Mi; Python FastAPI ≥256Mi; Node stacks 256Mi–512Mi. |
+| `--concurrency` | 80 (default) / 1 (CPU-bound) | Set to 1 if the handler does heavy CPU work per request to avoid contention. |
+
+### Recommended defaults per environment
+
+```bash
+# Staging — zero cost when idle
+gcloud run deploy my-function \
+  --cpu-boost \
+  --min-instances 0 \
+  --max-instances 5 \
+  --cpu 1 \
+  --memory 256Mi
+
+# Production — warm instance always available
+gcloud run deploy my-function \
+  --cpu-boost \
+  --min-instances 1 \
+  --max-instances 20 \
+  --cpu 2 \
+  --memory 512Mi
+```
+
+---
+
+## Python FastAPI
+
+### Lazy Imports
+
+```python
+# BAD — imports at module level, loaded on every cold start
+import pandas as pd
+import torch
+
+# GOOD — import inside function if only used occasionally
+def handle_heavy_request():
+    import pandas as pd   # deferred until first call
+    ...
+```
+
+### Uvicorn Workers
+
+Cloud Run manages concurrency externally. Use `--workers 1` — multiple workers in one container fight for CPU during startup.
+
+```dockerfile
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+```
+
+### Distroless Option
+
+```dockerfile
+# Use distroless/python3 for smaller attack surface (adds ~10-15% startup speed)
+FROM gcr.io/distroless/python3-debian12
+COPY --from=builder /app /app
+CMD ["/app/main.py"]
+```
+
+---
+
+## NestJS / TypeScript / Fastify (Node 24)
+
+### Lazy Module Loading
+
+```typescript
+// BAD — all providers eagerly initialized at startup
+@Module({ imports: [HeavyModule] })
+export class AppModule {}
+
+// GOOD — lazy load modules not needed for every request
+@Module({
+  imports: [LazyModuleLoader],
+})
+export class AppModule {}
+// In handler: await this.lazyModuleLoader.load(() => import('./heavy/heavy.module'))
+```
+
+### Tree-shaking and Bundle Size
+
+Use `esbuild` or `@nestjs/cli` bundler to produce a single-file bundle — reduces module resolution overhead at startup.
+
+```json
+// nest-cli.json
+{
+  "compilerOptions": {
+    "builder": "esbuild",
+    "deleteOutDir": true
+  }
+}
+```
+
+---
+
+## Spring Boot WebFlux (Java 21)
+
+### JVM Startup Flags
+
+```dockerfile
+# Dockerfile — fast startup via tiered compilation tier 1 (interpreted only)
+ENV JAVA_OPTS="-XX:TieredStopAtLevel=1 -XX:+UseSerialGC -Xmx512m"
+CMD ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+```
+
+| Flag | Effect | Trade-off |
+|------|--------|-----------|
+| `-XX:TieredStopAtLevel=1` | Skip JIT compilation on startup | Lower peak throughput (acceptable for short-lived functions) |
+| `-XX:+UseSerialGC` | Lighter GC for small heaps | Not suitable for high-throughput services |
+| `-Xmx512m` | Cap heap — prevents over-allocation | Set to 75% of `--memory` flag value |
+
+### Distroless Java
+
+```dockerfile
+FROM gcr.io/distroless/java21-debian12
+COPY --from=builder /app/target/app.jar /app.jar
+CMD ["/app.jar"]
+```
+
+### CRaC (Checkpoint/Restore) — Advanced
+
+CRaC snapshots the JVM after warmup and restores from snapshot on cold start. ~10x startup improvement. Requires:
+- `eclipse-temurin:21-crac` base image
+- `org.crac:crac` dependency
+- GCP Cloud Run alpha feature: `--execution-environment gen2`
+
+Only use CRaC if cold start > 3s after all other optimizations are applied.
+
+---
+
+## Cold Start Budget Reference
+
+Typical cold start times after applying `--cpu-boost`:
+
+| Stack | Typical Cold Start | After Optimization |
+|-------|-------------------|-------------------|
+| Python FastAPI (minimal) | 1.5–2.5s | 0.8–1.2s |
+| NestJS (bundled) | 1.0–1.8s | 0.5–0.9s |
+| TypeScript / Fastify | 0.6–1.2s | 0.3–0.6s |
+| Spring Boot WebFlux | 3.0–5.0s | 1.5–2.5s (TieredStop=1) |
+
+> These are estimates. Always measure with `gcloud run services describe --format='value(status.latestReadyRevisionName)'` and Cloud Run metrics in GCP Console before and after.

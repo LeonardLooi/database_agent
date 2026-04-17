@@ -1,0 +1,119 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/launch.json
+!.vscode/settings.json
+*.iml
+
+# Environment files
+.env
+.env.local
+.env*.local
+*.env
+
+# Claude Code
+.claude/settings.local.json
+.claude/temp/
+.claude/ralph-loop.local.md
+CLAUDE.local.md
+
+# Credentials & secrets
+*-credentials.json
+*-credentials-*.json
+sheets-mcp-credentials.json
+
+# Miscellaneous
+*.log
+*.swp
+.buildlog/
+.history
+
+# Java / Maven
+target/
+*.class
+*.jar
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+
+# Flutter / Dart / Pub
+app/.dart_tool/
+app/.packages
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+**/generated_plugin_registrant.dart
+.packages
+.packages.generated
+.pub-preload-cache/
+.pub/
+*.g.dart
+*.freezed.dart
+flutter_*.png
+linked_*.ds
+unlinked.ds
+unlinked_spec.ds
+**/doc/api/
+
+# Flutter repo-specific
+/bin/cache/
+/bin/internal/bootstrap.bat
+/bin/internal/bootstrap.sh
+/bin/mingit/
+/dev/benchmarks/mega_gallery/
+/dev/bots/.recipe_deps
+/dev/bots/android_tools/
+/dev/devicelab/ABresults*.json
+/dev/docs/doc/
+/dev/docs/flutter.docs.zip
+/dev/docs/lib/
+/dev/docs/pubspec.yaml
+/dev/integration_tests/**/xcuserdata
+/dev/integration_tests/**/Pods
+/packages/flutter/coverage/
+version
+analysis_benchmark.json
+
+# Android
+**/android/**/gradle-wrapper.jar
+.gradle/
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/key.properties
+*.jks
+
+# Build outputs
+build/
+*.apk
+*.aab
+*.ipa
+*.app
+
+# Coverage
+coverage/
+
+# Firebase
+.firebase/**/*
+firebase-debug.log
+
+# Docker
+docker-compose.override.yml

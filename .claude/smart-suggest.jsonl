@@ -1,0 +1,7 @@
+{"ts":"2026-04-17T03:12:41Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"You are a senior full-stack engineer. Build a production-ready, modern chatbot w"}
+{"ts":"2026-04-17T04:25:19Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"fix the error encountered when running uvicorn app.main:app --reload at ../chatb"}
+{"ts":"2026-04-17T04:41:42Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"run npm start at chatbot/frontend and fix all the error encountered "}
+{"ts":"2026-04-17T04:47:55Z","tier":1,"suggested":"ui-standards-expert","acted_on":false,"blocked":false,"prompt_snippet":"the angular UI is not display properly. run ng serve and check the output and fi"}
+{"ts":"2026-04-17T07:58:16Z","tier":1,"suggested":"/review-code","acted_on":false,"blocked":false,"prompt_snippet":"i am not able to type message at the UI. check why "}
+{"ts":"2026-04-17T10:13:41Z","tier":1,"suggested":"/review-code","acted_on":false,"blocked":false,"prompt_snippet":"review and test the entire architecture design "}
+{"ts":"2026-04-17T10:44:34Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"rewind to before group and collapse all unavaialble model and disabled from sele"}

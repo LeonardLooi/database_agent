@@ -1,0 +1,20 @@
+fastapi
+uvicorn[standard]
+websockets
+pydantic>=2.0
+pydantic-settings
+sqlalchemy>=2.0
+greenlet
+aiosqlite
+alembic
+PyJWT>=2.9
+python-multipart
+structlog
+httpx
+
+# LLM providers — minimum versions required; APIs change between majors
+anthropic>=0.40
+openai>=1.58
+google-generativeai>=0.8
+boto3>=1.35
+strands-agents>=0.1
