@@ -20,7 +20,11 @@ class GuestTokenResponse(BaseModel):
 
 @router.post("/guest", response_model=GuestTokenResponse)
 async def guest_login() -> GuestTokenResponse:
-    """Issue a JWT for a new anonymous guest session."""
+    """Issue a JWT for a new anonymous guest session.
+
+    Returns:
+        GuestTokenResponse with a bearer token and a generated guest user ID.
+    """
     user_id = f"guest_{uuid.uuid4().hex[:12]}"
     token = create_access_token(user_id)
     logger.info("guest_token_issued", user_id=user_id)
@@ -34,7 +38,17 @@ class LoginRequest(BaseModel):
 
 @router.post("/token", response_model=GuestTokenResponse)
 async def login(body: LoginRequest) -> GuestTokenResponse:
-    """Demo login — username becomes the user_id, any password accepted."""
+    """Demo login — username becomes the user_id, any password accepted.
+
+    Args:
+        body: Login credentials. Only `username` is checked; password is ignored.
+
+    Returns:
+        GuestTokenResponse with a bearer token scoped to the given username.
+
+    Raises:
+        HTTPException: 400 if `username` is empty.
+    """
     if not body.username:
         raise HTTPException(status_code=400, detail="username required")
     user_id = f"user_{body.username}"

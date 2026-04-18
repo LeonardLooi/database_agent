@@ -94,6 +94,24 @@ async def chat_websocket(
     websocket: WebSocket,
     token: str = Query(...),
 ) -> None:
+    """Handle a persistent WebSocket connection for streaming chat.
+
+    On connect, immediately sends an `{"type": "providers", ...}` frame listing
+    all registered LLM providers and their available models.
+
+    Message flow per user turn:
+      1. Client sends `{"type": "message", ...}` with `messages` and optional `model`.
+      2. Server streams `{"type": "delta", "content": "<token>"}` frames.
+      3. Server sends `{"type": "done", "conversation_id": ..., "token_count": ...}`.
+      4. For new conversations, a `{"type": "title", ...}` frame follows asynchronously.
+
+    Args:
+        websocket: The active WebSocket connection.
+        token: JWT bearer token passed as a query parameter.
+
+    Raises:
+        Closes with code 4001 if the token is missing or invalid.
+    """
     user_id = decode_token(token)
     if not user_id:
         await websocket.close(code=4001, reason="Unauthorized")

@@ -24,6 +24,17 @@ class LLMService:
         temperature: float,
         max_tokens: int = 1024,
     ) -> AsyncGenerator[str, None]:
+        """Stream LLM response tokens for the given conversation.
+
+        Args:
+            messages: Ordered list of conversation turns (role + content).
+            model: Model identifier; falls back to `provider.default_model` if None.
+            temperature: Sampling temperature passed directly to the provider.
+            max_tokens: Maximum tokens in the response (default 1024).
+
+        Yields:
+            String tokens as they arrive from the provider.
+        """
         resolved_model = model or self.provider.default_model
         logger.info(
             "llm_stream_start",
@@ -35,6 +46,17 @@ class LLMService:
             yield token
 
     async def generate_title(self, content: str) -> str:
+        """Generate a short 4-word title for a conversation opening message.
+
+        Uses the provider's fastest available model with a capped 20-token budget.
+        Falls back to "New Conversation" on any error.
+
+        Args:
+            content: The user's first message (truncated to 500 chars internally).
+
+        Returns:
+            A 4-word title string with surrounding quotes stripped.
+        """
         prompt = [
             MsgIn(
                 role="user",

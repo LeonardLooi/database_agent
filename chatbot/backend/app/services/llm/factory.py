@@ -35,6 +35,18 @@ class LLMProviderFactory:
 
     @classmethod
     def create(cls, provider_name: str | None = None) -> BaseLLMProvider:
+        """Instantiate and return a provider by name.
+
+        Args:
+            provider_name: Key from the registry (e.g. "anthropic", "openai").
+                Falls back to `settings.LLM_PROVIDER` when None.
+
+        Returns:
+            A fresh `BaseLLMProvider` instance for the requested provider.
+
+        Raises:
+            ValueError: If `provider_name` is not in the registry.
+        """
         name = provider_name or settings.LLM_PROVIDER
         if name not in cls._registry:
             raise ValueError(
@@ -44,14 +56,33 @@ class LLMProviderFactory:
 
     @classmethod
     def resolve_provider_for_model(cls, model: str) -> str | None:
+        """Look up which provider owns a given model ID.
+
+        Args:
+            model: Model identifier string (e.g. "claude-sonnet-4-20250514").
+
+        Returns:
+            Provider name string, or None if the model is not in MODEL_TO_PROVIDER.
+        """
         return MODEL_TO_PROVIDER.get(model)
 
     @classmethod
     def available_providers(cls) -> list[str]:
+        """Return a list of all registered provider names.
+
+        Returns:
+            List of provider name strings in registration order.
+        """
         return list(cls._registry)
 
     @classmethod
     def get_providers_data(cls) -> list[dict]:
+        """Return serialisable provider metadata for all available providers.
+
+        Returns:
+            List of dicts, each with keys `provider`, `models`, and `default_model`.
+            Providers whose `is_available()` returns False are excluded.
+        """
         result = []
         for name, provider_cls in cls._registry.items():
             if not hasattr(provider_cls, "is_available") or provider_cls.is_available():

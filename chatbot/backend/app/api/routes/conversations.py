@@ -26,6 +26,18 @@ async def list_conversations(
     user_id: str = Depends(_get_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[ConversationOut]:
+    """Return the most recent 100 conversations for the authenticated user.
+
+    Args:
+        user_id: Resolved from the bearer token via `_get_user`.
+        db: Injected async database session.
+
+    Returns:
+        List of ConversationOut ordered by `updated_at` descending.
+
+    Raises:
+        HTTPException: 401 if the token is missing or invalid.
+    """
     result = await db.execute(
         select(Conversation)
         .where(Conversation.user_id == user_id)
@@ -41,6 +53,17 @@ async def delete_conversation(
     user_id: str = Depends(_get_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete a conversation and all its messages.
+
+    Args:
+        conversation_id: UUID of the conversation to delete.
+        user_id: Resolved from the bearer token — enforces ownership.
+        db: Injected async database session.
+
+    Raises:
+        HTTPException: 401 if the token is missing or invalid.
+        HTTPException: 404 if the conversation does not exist or belongs to another user.
+    """
     result = await db.execute(
         select(Conversation).where(
             Conversation.id == conversation_id,
@@ -60,6 +83,20 @@ async def get_messages(
     user_id: str = Depends(_get_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[MessageOut]:
+    """Return all messages in a conversation, ordered chronologically.
+
+    Args:
+        conversation_id: UUID of the target conversation.
+        user_id: Resolved from the bearer token — enforces ownership.
+        db: Injected async database session.
+
+    Returns:
+        List of MessageOut ordered by `created_at` ascending.
+
+    Raises:
+        HTTPException: 401 if the token is missing or invalid.
+        HTTPException: 404 if the conversation does not exist or belongs to another user.
+    """
     result = await db.execute(
         select(Conversation).where(
             Conversation.id == conversation_id,
