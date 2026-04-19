@@ -58,3 +58,34 @@ class WsProviderInfo(BaseModel):
 class WsProviders(BaseModel):
     type: Literal["providers"] = "providers"
     data: list[WsProviderInfo]
+
+
+# ── agent frames (data query responses) ──────────────────────────────────────
+
+class WsAgentProgress(BaseModel):
+    """Sent during agent loop execution to keep the client informed."""
+    type: Literal["agent_progress"] = "agent_progress"
+    step: str
+    message: str
+
+
+class WsClarificationRequest(BaseModel):
+    """Sent when the agent cannot confidently match an intent and needs user input."""
+    type: Literal["clarification_request"] = "clarification_request"
+    message: str
+    candidates: list[str] = Field(default_factory=list)
+
+
+class WsAgentResponse(BaseModel):
+    """Final structured response from the agent loop after data retrieval."""
+    type: Literal["agent_response"] = "agent_response"
+    conversation_id: str
+    explanation: str
+    table_md: str
+    csv: str
+    sql_used: list[str] = Field(default_factory=list)
+    python_used: str = ""
+    truncated: bool = False
+    row_count: int = 0
+    provider: str
+    model: str

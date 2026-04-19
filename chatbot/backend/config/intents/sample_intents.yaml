@@ -1,0 +1,64 @@
+intents:
+  - name: sales_revenue
+    description: "Query sales revenue, order totals, and financial performance metrics"
+    connectors:
+      - type: snowflake
+        warehouse: ANALYTICS_WH
+        database: SALES_DB
+        schema: PUBLIC
+    prompt_file: sales_revenue.md
+    keywords:
+      - revenue
+      - sales
+      - orders
+      - total
+      - amount
+      - invoice
+
+  - name: customer_data
+    description: "Query customer information, profiles, and contact details"
+    connectors:
+      - type: mssql
+        server: ""
+        database: CRM_DB
+    prompt_file: customer_data.md
+    keywords:
+      - customer
+      - client
+      - contact
+      - profile
+      - account
+
+  - name: product_inventory
+    description: "Query product catalog, inventory levels, and stock information"
+    connectors:
+      - type: bigquery
+        project_id: ""
+    prompt_file: product_inventory.md
+    keywords:
+      - product
+      - inventory
+      - stock
+      - catalog
+      - sku
+      - item
+
+  - name: sales_vs_crm
+    description: "Compare sales revenue data from Snowflake with CRM customer data from MSSQL"
+    connectors:
+      - type: snowflake
+        warehouse: ANALYTICS_WH
+        database: SALES_DB
+        schema: PUBLIC
+      - type: mssql
+        server: ""
+        database: CRM_DB
+    prompt_file: sales_vs_crm.md
+    requires_combine: true
+    keywords:
+      - compare
+      - versus
+      - vs
+      - cross
+      - join
+      - both

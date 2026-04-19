@@ -412,3 +412,105 @@ error message no module name app using option 2
 ## 2026-04-18T03:11:15Z
 git push to repository with the commit message on  changes made
 ---
+
+## 2026-04-19T02:30:42Z
+/plan-mode-review
+---
+
+## 2026-04-19T02:32:15Z
+/google-adk
+---
+
+## 2026-04-19T02:35:42Z
+description: >
+  Build a production-grade agentic data chatbot using Google ADK with multi-agent
+  orchestration, YAML-driven intent definitions, multi-platform database connectors
+  (PostgreSQL, MySQL, Snowflake, BigQuery, MSSQL), Snowflake Cortex integration
+  (Analyst, Functions, Search, Agents REST API), cross-agent DataFrame combining in
+  Python, and FastAPI + Angular 21 frontend. Use this skill whenever building or
+  extending an ADK-based data chatbot, agentic SQL pipeline, Cortex Analyst integration,
+  or multi-platform data extraction system.
+---
+
+# ADK Agentic Data Chatbot Skill
+
+## What This Skill Covers
+- Google ADK orchestrator + specialist sub-agents (LlmAgent, ParallelAgent, SequentialAgent)
+- YAML intent definitions (machine config) + Markdown prompt files (LLM instructions)
+- Multi-platform database connectors routed per-dataset from YAML
+- Session-scoped DataFrame store for cross-agent Python joins
+- Snowflake Cortex: Analyst (NL→SQL), Functions (SUMMARIZE/SENTIMENT), Search, Agents API
+- Unknown intent detection → semantic clarification before data extraction
+- FastAPI SSE streaming gateway + Angular 21 chat service
+---
+
+## 2026-04-19T02:36:39Z
+B
+---
+
+## 2026-04-19T02:42:12Z
+description: >
+  Build a production-grade agentic data chatbot using Google ADK with multi-agent
+  orchestration, YAML-driven intent definitions, multi-platform database connectors
+  (PostgreSQL, MySQL, Snowflake, BigQuery, MSSQL), Snowflake Cortex integration
+  (Analyst, Functions, Search, Agents REST API), cross-agent DataFrame combining in
+  Python, and FastAPI + Angular 21 frontend. If user’s intent is to combine data from two sub-agent, I want each sub-agent tool to return a dataframe and have combine the dataset using Python.
+
+If user’s intent is not defined in YAML definition, guess the best and relevant agent and ask user for the right intent before extracting data.
+---
+## What This Skill Covers
+- Google ADK orchestrator + specialist sub-agents (LlmAgent, ParallelAgent, SequentialAgent)
+- YAML intent definitions (machine config) + Markdown prompt files (LLM instructions)
+- Multi-platform database connectors routed per-dataset from YAML
+- Session-scoped DataFrame store for cross-agent Python joins
+- Snowflake Cortex: Analyst (NL→SQL), Functions (SUMMARIZE/SENTIMENT), Search, Agents API
+- Unknown intent detection → semantic clarification before data extraction
+---
+
+## 2026-04-19T02:43:22Z
+build on /chatbot project. use /plan-mode-review first
+---
+
+## 2026-04-19T02:58:02Z
+I want to keep all the other providers to determine the intent. the ADK suppose to replace Gemini provider only. User can choose any provider and achieve the same goal of finding the right dataset. Bigquery auth is through service account. Keep websocket for ADK and all other providers. Plan and ask me again.
+---
+
+## 2026-04-19T03:06:30Z
+each provider role is to obtain the intent from user's message. Each Provider will orchestra to find the shared specialist sub-agent (LLM Agent, ParallelAgent, SequentialAgent), YAML intents, DB connectors, dataframe store and so on.
+---
+
+## 2026-04-19T03:07:43Z
+the goal is that each provider will use their respective LLM to decipher the best orchestration.
+---
+
+## 2026-04-19T03:15:20Z
+Q1 - Skip PostgreSQL and MySQL in MVP. Include Bigquery and MSSQL in MVP.
+---
+
+## 2026-04-19T03:15:36Z
+Q2 - include COMPLETE/SUMMARIZE function
+---
+
+## 2026-04-19T03:17:21Z
+Q3 - after agent loop returns dataframe, get provider LLM write in natural-language explanation, return raw data table in csv, return formatted table in chat, return the SQL and Python code used to produce the result.
+---
+
+## 2026-04-19T04:42:18Z
+MSSQL use pyodbc. C1 - bigquery service account is by logging in to team space and it will auto resolve authentication. C2 - Redis be in MVP scope. C3 - no feature flag. do not delete gemini_provider.py, keep the file name and replace the code with adk_provider
+---
+
+## 2026-04-19T04:46:23Z
+/plan-mode-review review the plans and handle all potential edge cases
+---
+
+## 2026-04-19T04:54:08Z
+start
+---
+
+## 2026-04-19T05:03:21Z
+start
+---
+
+## 2026-04-19T05:47:05Z
+git push with commit messages describing the right changes
+---
