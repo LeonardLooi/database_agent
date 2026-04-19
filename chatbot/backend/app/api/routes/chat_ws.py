@@ -3,11 +3,17 @@ from __future__ import annotations
 import asyncio
 import uuid
 
+import redis as redis_lib
 import structlog
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.clarification_state import ClarificationState
+from app.agent.dataframe_store import DataFrameStore
+from app.agent.query_router import QueryRouter
+from app.agent.response_formatter import ResponseFormatter
+from app.agent.tools.query_tools import AgentToolContext
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.security import decode_token
@@ -19,6 +25,24 @@ from app.services.llm_service import LLMService
 
 logger = structlog.get_logger()
 router = APIRouter(tags=["websocket"])
+
+# Lazily initialized shared objects (created once per worker process)
+_redis_client: redis_lib.Redis | None = None
+_query_router: QueryRouter | None = None
+
+
+def _get_redis() -> redis_lib.Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis_lib.from_url(settings.REDIS_URL, decode_responses=True)
+    return _redis_client
+
+
+def _get_query_router() -> QueryRouter:
+    global _query_router
+    if _query_router is None:
+        _query_router = QueryRouter()
+    return _query_router
 
 
 async def _get_or_create_conversation(
@@ -167,17 +191,115 @@ async def chat_websocket(
 
             # ── get or create conversation ───────────────────────────────────
             conv_id = incoming.conversation_id or str(uuid.uuid4())
+            user_content = incoming.messages[-1].content if incoming.messages else ""
 
-            # ── stream response ──────────────────────────────────────────────
+            # ── route: data query vs freeform chat ───────────────────────────
+            redis_client = _get_redis()
+            store = DataFrameStore(redis_client)
+            clarification_state = ClarificationState(redis_client)
+
+            # Resume clarification: if a question was pending, clear it and
+            # prepend the original query so the agent has full context.
+            pending = clarification_state.get_pending(user_id, conv_id)
+            if pending:
+                clarification_state.clear(user_id, conv_id)
+                # Prepend original query + clarification answer
+                resume_prefix = (
+                    f"[Original question: {pending['original_query']}]\n"
+                    f"[Clarification answer: {user_content}]"
+                )
+                messages_for_loop = [
+                    MsgIn(role="user", content=resume_prefix),
+                    *incoming.messages[:-1],
+                    MsgIn(role="user", content=user_content),
+                ]
+                use_agent_loop = True
+            else:
+                messages_for_loop = incoming.messages
+                use_agent_loop = bool(
+                    user_content and _get_query_router().is_data_query(user_content)
+                )
+
+            full_content = ""
+            is_new_conversation = False
+
+            if use_agent_loop:
+                # ── agent tool-use loop ──────────────────────────────────────
+                ctx = AgentToolContext(
+                    user_id=user_id,
+                    conversation_id=conv_id,
+                    store=store,
+                    clarification_state=clarification_state,
+                    websocket=websocket,
+                )
+                try:
+                    loop_result = await provider.run_agent_loop(
+                        messages_for_loop, resolved_model, ctx
+                    )
+                except NotImplementedError:
+                    # Provider hasn't implemented run_agent_loop — fall back to stream
+                    use_agent_loop = False
+                    loop_result = None
+                except Exception as exc:
+                    logger.error("agent_loop_failed", error=str(exc), user_id=user_id)
+                    await manager.send_json(
+                        {"type": "error", "message": "Agent error — check server logs", "code": 500},
+                        websocket,
+                    )
+                    continue
+
+                if use_agent_loop and loop_result is not None:
+                    if loop_result.status == "clarification_pending":
+                        # WsClarificationRequest was already sent by ask_clarification tool
+                        async with AsyncSessionLocal() as db:
+                            _, is_new_conversation = await _get_or_create_conversation(
+                                db, conv_id, user_id
+                            )
+                            await _save_messages(
+                                db, conv_id, user_content, "",
+                                provider.provider_name, resolved_model, 0,
+                            )
+                        if is_new_conversation and user_content:
+                            asyncio.create_task(
+                                _generate_and_send_title(websocket, llm_service, user_content, conv_id)
+                            )
+                        continue
+
+                    formatter = ResponseFormatter(store)
+                    agent_response = formatter.build(
+                        loop_result, conv_id, user_id,
+                        provider.provider_name, resolved_model,
+                    )
+                    full_content = agent_response.explanation
+
+                    async with AsyncSessionLocal() as db:
+                        _, is_new_conversation = await _get_or_create_conversation(
+                            db, conv_id, user_id
+                        )
+                        await _save_messages(
+                            db, conv_id, user_content, full_content,
+                            provider.provider_name, resolved_model,
+                            max(1, len(full_content) // 4),
+                        )
+
+                    await manager.send_json(agent_response.model_dump(), websocket)
+
+                    if is_new_conversation and user_content:
+                        asyncio.create_task(
+                            _generate_and_send_title(websocket, llm_service, user_content, conv_id)
+                        )
+                    continue
+
+            # ── freeform stream (no tool use) ────────────────────────────────
             full_content = ""
             try:
-                async for token in llm_service.stream(
+                async for tok in llm_service.stream(
                     incoming.messages,
                     resolved_model,
                     incoming.temperature,
                 ):
-                    full_content += token
-                    await manager.send_json({"type": "delta", "content": token}, websocket)
+                    full_content += tok
+                    await manager.send_json({"type": "delta", "content": tok}, websocket)
 
             except Exception as exc:
                 logger.error("llm_stream_failed", error=str(exc), user_id=user_id)
@@ -190,7 +312,6 @@ async def chat_websocket(
             token_count = max(1, len(full_content) // 4)
 
             # ── persist to DB before notifying client ────────────────────────
-            user_content = incoming.messages[-1].content if incoming.messages else ""
             async with AsyncSessionLocal() as db:
                 _, is_new_conversation = await _get_or_create_conversation(db, conv_id, user_id)
                 await _save_messages(

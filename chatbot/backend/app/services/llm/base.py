@@ -2,9 +2,25 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import ClassVar
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, ClassVar
 
 from app.schemas.ws_messages import MsgIn
+
+if TYPE_CHECKING:
+    from app.agent.tools.query_tools import AgentToolContext
+
+
+@dataclass
+class AgentLoopResult:
+    explanation: str = ""
+    final_label: str = ""
+    sql_used: list[str] = field(default_factory=list)
+    python_used: str = ""
+    truncated: bool = False
+    row_count: int = 0
+    status: str = "completed"  # "completed" | "clarification_pending" | "error"
+    error: str = ""
 
 
 class BaseLLMProvider(ABC):
@@ -39,3 +55,14 @@ class BaseLLMProvider(ABC):
     ) -> str:
         """Return a complete (non-streaming) response string."""
         ...
+
+    async def run_agent_loop(
+        self,
+        messages: list[MsgIn],
+        model: str,
+        ctx: "AgentToolContext",
+    ) -> AgentLoopResult:
+        """Run provider-native agent loop with tool use. Override in subclasses."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement run_agent_loop()"
+        )

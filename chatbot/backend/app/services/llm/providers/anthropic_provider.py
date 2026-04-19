@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 
 import structlog
 
 from app.core.config import settings
 from app.schemas.ws_messages import MsgIn
-from app.services.llm.base import BaseLLMProvider
+from app.services.llm.base import AgentLoopResult, BaseLLMProvider
+
+if TYPE_CHECKING:
+    from app.agent.tools.query_tools import AgentToolContext
 
 logger = structlog.get_logger()
 
@@ -68,3 +73,96 @@ class AnthropicProvider(BaseLLMProvider):
         except Exception as exc:
             logger.error("anthropic_generate_error", error=str(exc), model=model)
             raise
+
+    # ── tool_use agent loop ───────────────────────────────────────────────────
+
+    async def run_agent_loop(
+        self,
+        messages: list[MsgIn],
+        model: str,
+        ctx: "AgentToolContext",
+    ) -> AgentLoopResult:
+        from app.agent.shared_toolkit import SharedToolkit
+        from app.core.config import settings as cfg
+
+        toolkit = SharedToolkit()
+        tools = toolkit.get_anthropic_tools()
+        system = toolkit.intents_as_system_context()
+        loop_messages = [{"role": m.role, "content": m.content} for m in messages]
+        result = AgentLoopResult()
+        sql_used: list[str] = []
+
+        try:
+            for _ in range(cfg.MAX_TOOL_CALLS):
+                response = await self._client.messages.create(
+                    model=model,
+                    system=system,
+                    messages=loop_messages,
+                    tools=tools,
+                    max_tokens=4096,
+                )
+
+                # Collect any text content
+                text_parts = [b.text for b in response.content if b.type == "text"]
+                if text_parts:
+                    result.explanation = " ".join(text_parts)
+
+                if response.stop_reason != "tool_use":
+                    break
+
+                # Process tool calls
+                tool_results = []
+                for block in response.content:
+                    if block.type != "tool_use":
+                        continue
+                    tool_name = block.name
+                    tool_args = block.input
+
+                    logger.info(
+                        "anthropic_tool_call",
+                        tool=tool_name,
+                        user_id=ctx.user_id,
+                    )
+
+                    try:
+                        tool_output = await toolkit.dispatch(tool_name, tool_args, ctx)
+                    except Exception as tool_exc:
+                        logger.error(
+                            "anthropic_tool_error",
+                            tool=tool_name,
+                            error=str(tool_exc),
+                        )
+                        tool_output = {"error": str(tool_exc)}
+
+                    # Track SQL from query tools
+                    if isinstance(tool_output, dict) and "sql" in tool_output:
+                        sql_used.append(tool_output["sql"])
+
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(tool_output),
+                    })
+
+                # Append assistant turn + tool results to loop
+                loop_messages.append({"role": "assistant", "content": response.content})
+                loop_messages.append({"role": "user", "content": tool_results})
+
+                if ctx.clarification_state.is_pending(ctx.user_id, ctx.conversation_id):
+                    result.status = "clarification_pending"
+                    return result
+
+            result.sql_used = sql_used
+            result.status = "completed"
+
+        except Exception as exc:
+            logger.error(
+                "anthropic_agent_loop_error",
+                error=str(exc),
+                model=model,
+                user_id=ctx.user_id,
+            )
+            result.status = "error"
+            result.error = str(exc)
+
+        return result
