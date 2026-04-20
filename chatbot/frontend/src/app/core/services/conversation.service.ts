@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   ChatMessage,
   Conversation,
+  WsClarificationRequest,
   WsDelta,
   WsDone,
   WsTitle,
@@ -62,10 +63,11 @@ export class ConversationService {
   constructor() {
     this.ws.messages$.subscribe((msg) => {
       switch (msg.type) {
-        case 'delta':  this.onDelta(msg);  break;
-        case 'done':   this.onDone(msg);   break;
-        case 'title':  this.onTitle(msg);  break;
-        case 'error':  this.onError();     break;
+        case 'delta':                this.onDelta(msg);                         break;
+        case 'done':                 this.onDone(msg);                          break;
+        case 'title':                this.onTitle(msg);                         break;
+        case 'error':                this.onError();                            break;
+        case 'clarification_request': this.onClarification(msg);               break;
       }
     });
   }
@@ -234,6 +236,36 @@ export class ConversationService {
         m.streaming ? { ...m, streaming: false, error: true, content: '⚠ Response failed.' } : m,
       ),
     }));
+  }
+
+  private onClarification(msg: WsClarificationRequest): void {
+    this._streaming.set(false);
+    const convId = this._activeId();
+    if (!convId) return;
+    const clarMsg: ChatMessage = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: msg.message,
+      clarification: { message: msg.message, candidates: msg.candidates, answered: false },
+    };
+    this.patchConversation(convId, (c) => ({
+      ...c,
+      messages: [...c.messages, clarMsg],
+    }));
+  }
+
+  selectClarification(messageId: string, candidate: string): void {
+    const convId = this._activeId();
+    if (!convId || this._streaming()) return;
+    this.patchConversation(convId, (c) => ({
+      ...c,
+      messages: c.messages.map((m) =>
+        m.id === messageId && m.clarification
+          ? { ...m, clarification: { ...m.clarification, answered: true } }
+          : m,
+      ),
+    }));
+    this.sendMessage(candidate);
   }
 
   private patchConversation(

@@ -36,6 +36,7 @@ def _get_redis():
         return None
     if _redis_client is None:
         import redis as redis_lib
+
         _redis_client = redis_lib.from_url(settings.REDIS_URL, decode_responses=True)
     return _redis_client
 
@@ -196,6 +197,7 @@ async def chat_websocket(
             # ── get or create conversation ───────────────────────────────────
             conv_id = incoming.conversation_id or str(uuid.uuid4())
             user_content = incoming.messages[-1].content if incoming.messages else ""
+            _intent_hint = ""
 
             # ── route: data query vs freeform chat ───────────────────────────
             redis_client = _get_redis()
@@ -203,26 +205,110 @@ async def chat_websocket(
             clarification_state = ClarificationState(redis_client)
 
             # Resume clarification: if a question was pending, clear it and
-            # prepend the original query so the agent has full context.
+            # route based on clarification type.
             pending = clarification_state.get_pending(user_id, conv_id)
             if pending:
                 clarification_state.clear(user_id, conv_id)
-                # Prepend original query + clarification answer
-                resume_prefix = (
-                    f"[Original question: {pending['original_query']}]\n"
-                    f"[Clarification answer: {user_content}]"
-                )
-                messages_for_loop = [
-                    MsgIn(role="user", content=resume_prefix),
-                    *incoming.messages[:-1],
-                    MsgIn(role="user", content=user_content),
-                ]
-                use_agent_loop = True
+                clarification_type = pending.get("clarification_type", "agent_question")
+                original_query = pending["original_query"]
+
+                if clarification_type == "intent_selection":
+                    # User selected an intent from the candidate list.
+                    # Candidates are formatted "intent_name: description" — split to get name.
+                    selected_name = user_content.split(": ", 1)[0].strip()
+                    matched_intent = _get_query_router()._loader.get(selected_name)
+
+                    if matched_intent:
+                        resume_prefix = (
+                            f"[Original question: {original_query}]\n"
+                            f"[User selected intent: {matched_intent.name}"
+                            f" — {matched_intent.description}]\n"
+                            f"Use the appropriate tool for this intent."
+                        )
+                        messages_for_loop = [MsgIn(role="user", content=resume_prefix)]
+                        use_agent_loop = True
+                    else:
+                        # No matching tool — fall through to generic LLM with context
+                        messages_for_loop = [
+                            MsgIn(
+                                role="user",
+                                content=(
+                                    f"The user asked: '{original_query}'. "
+                                    f"They clarified: '{user_content}'. "
+                                    f"Answer using your general knowledge."
+                                ),
+                            )
+                        ]
+                        use_agent_loop = False
+                else:
+                    # Existing agent_question resume: prepend original query + answer
+                    resume_prefix = (
+                        f"[Original question: {original_query}]\n"
+                        f"[Clarification answer: {user_content}]"
+                    )
+                    messages_for_loop = [
+                        MsgIn(role="user", content=resume_prefix),
+                        *incoming.messages[:-1],
+                        MsgIn(role="user", content=user_content),
+                    ]
+                    use_agent_loop = True
             else:
                 messages_for_loop = incoming.messages
                 use_agent_loop = bool(
                     user_content and _get_query_router().is_data_query(user_content)
                 )
+
+            # ── pre-loop intent estimation (only on fresh data queries) ───────
+            if use_agent_loop and not pending:
+                from app.schemas.ws_messages import WsClarificationRequest
+
+                estimation = _get_query_router().estimate_intent(user_content)
+
+                if estimation.confidence == 0.0:
+                    # No intent keyword matched — answer generically and surface intents
+                    use_agent_loop = False
+                    all_intents = _get_query_router()._loader.all_intents()
+                    if all_intents:
+                        suggestions = "\n".join(
+                            f"  • {i.name}: {i.description}" for i in all_intents
+                        )
+                        _intent_hint = f"\n\n---\n*Available data topics I can query:*\n{suggestions}"
+                elif estimation.is_ambiguous and estimation.candidates:
+                    # Multiple intents match with similar scores — ask user to choose
+                    clarification_state.set_pending(
+                        user_id=user_id,
+                        conversation_id=conv_id,
+                        question="Which area are you asking about?",
+                        candidates=estimation.candidates,
+                        original_query=user_content,
+                        clarification_type="intent_selection",
+                    )
+                    frame = WsClarificationRequest(
+                        message="I found multiple relevant areas. Which one do you mean?",
+                        candidates=estimation.candidates,
+                    )
+                    await manager.send_json(frame.model_dump(), websocket)
+                    async with AsyncSessionLocal() as db:
+                        _, is_new_conv = await _get_or_create_conversation(
+                            db, conv_id, user_id
+                        )
+                        await _save_messages(
+                            db,
+                            conv_id,
+                            user_content,
+                            "",
+                            provider.provider_name,
+                            resolved_model,
+                            0,
+                        )
+                    if is_new_conv and user_content:
+                        asyncio.create_task(
+                            _generate_and_send_title(
+                                websocket, llm_service, user_content, conv_id
+                            )
+                        )
+                    continue
+                # else: clear single-intent match — proceed to agent loop unchanged
 
             full_content = ""
             is_new_conversation = False
@@ -247,7 +333,11 @@ async def chat_websocket(
                 except Exception as exc:
                     logger.error("agent_loop_failed", error=str(exc), user_id=user_id)
                     await manager.send_json(
-                        {"type": "error", "message": "Agent error — check server logs", "code": 500},
+                        {
+                            "type": "error",
+                            "message": "Agent error — check server logs",
+                            "code": 500,
+                        },
                         websocket,
                     )
                     continue
@@ -260,19 +350,29 @@ async def chat_websocket(
                                 db, conv_id, user_id
                             )
                             await _save_messages(
-                                db, conv_id, user_content, "",
-                                provider.provider_name, resolved_model, 0,
+                                db,
+                                conv_id,
+                                user_content,
+                                "",
+                                provider.provider_name,
+                                resolved_model,
+                                0,
                             )
                         if is_new_conversation and user_content:
                             asyncio.create_task(
-                                _generate_and_send_title(websocket, llm_service, user_content, conv_id)
+                                _generate_and_send_title(
+                                    websocket, llm_service, user_content, conv_id
+                                )
                             )
                         continue
 
                     formatter = ResponseFormatter(store)
                     agent_response = formatter.build(
-                        loop_result, conv_id, user_id,
-                        provider.provider_name, resolved_model,
+                        loop_result,
+                        conv_id,
+                        user_id,
+                        provider.provider_name,
+                        resolved_model,
                     )
                     full_content = agent_response.explanation
 
@@ -281,8 +381,12 @@ async def chat_websocket(
                             db, conv_id, user_id
                         )
                         await _save_messages(
-                            db, conv_id, user_content, full_content,
-                            provider.provider_name, resolved_model,
+                            db,
+                            conv_id,
+                            user_content,
+                            full_content,
+                            provider.provider_name,
+                            resolved_model,
                             max(1, len(full_content) // 4),
                         )
 
@@ -290,7 +394,9 @@ async def chat_websocket(
 
                     if is_new_conversation and user_content:
                         asyncio.create_task(
-                            _generate_and_send_title(websocket, llm_service, user_content, conv_id)
+                            _generate_and_send_title(
+                                websocket, llm_service, user_content, conv_id
+                            )
                         )
                     continue
 
@@ -298,17 +404,29 @@ async def chat_websocket(
             full_content = ""
             try:
                 async for tok in llm_service.stream(
-                    incoming.messages,
+                    messages_for_loop,
                     resolved_model,
                     incoming.temperature,
                 ):
                     full_content += tok
-                    await manager.send_json({"type": "delta", "content": tok}, websocket)
+                    await manager.send_json(
+                        {"type": "delta", "content": tok}, websocket
+                    )
+
+                if _intent_hint:
+                    full_content += _intent_hint
+                    await manager.send_json(
+                        {"type": "delta", "content": _intent_hint}, websocket
+                    )
 
             except Exception as exc:
                 logger.error("llm_stream_failed", error=str(exc), user_id=user_id)
                 await manager.send_json(
-                    {"type": "error", "message": "LLM error — check server logs", "code": 500},
+                    {
+                        "type": "error",
+                        "message": "LLM error — check server logs",
+                        "code": 500,
+                    },
                     websocket,
                 )
                 continue
@@ -317,7 +435,9 @@ async def chat_websocket(
 
             # ── persist to DB before notifying client ────────────────────────
             async with AsyncSessionLocal() as db:
-                _, is_new_conversation = await _get_or_create_conversation(db, conv_id, user_id)
+                _, is_new_conversation = await _get_or_create_conversation(
+                    db, conv_id, user_id
+                )
                 await _save_messages(
                     db,
                     conv_id,

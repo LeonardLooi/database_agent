@@ -147,7 +147,10 @@ import { MessageBubbleComponent } from '../../shared/components/message-bubble.c
         </div>
       } @else {
         @for (msg of conversations.activeMessages(); track msg.id) {
-          <app-message-bubble [message]="msg" />
+          <app-message-bubble
+            [message]="msg"
+            (selectCandidate)="conversations.selectClarification(msg.id, $event)"
+          />
         }
         <div #anchor></div>
       }

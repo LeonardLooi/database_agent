@@ -44,6 +44,12 @@ export interface WsTitle {
   title: string;
 }
 
+export interface WsClarificationRequest {
+  type: 'clarification_request';
+  message: string;
+  candidates: string[];
+}
+
 export interface WsProviderInfo {
   provider: string;
   models: string[];
@@ -55,9 +61,22 @@ export interface WsProviders {
   data: WsProviderInfo[];
 }
 
-export type WsIncoming = WsDelta | WsDone | WsError | WsPong | WsTitle | WsProviders;
+export type WsIncoming =
+  | WsDelta
+  | WsDone
+  | WsError
+  | WsPong
+  | WsTitle
+  | WsProviders
+  | WsClarificationRequest;
 
 // ── Application models ────────────────────────────────────────────────────────
+
+export interface ClarificationState {
+  message: string;
+  candidates: string[];
+  answered: boolean;
+}
 
 export interface ChatMessage {
   id: string;
@@ -68,6 +87,7 @@ export interface ChatMessage {
   tokenCount?: number;
   streaming?: boolean;
   error?: boolean;
+  clarification?: ClarificationState;
 }
 
 export interface Conversation {

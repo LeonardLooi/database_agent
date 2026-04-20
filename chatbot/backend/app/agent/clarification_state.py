@@ -60,14 +60,24 @@ class ClarificationState:
         question: str,
         candidates: list[str],
         original_query: str,
+        clarification_type: str = "agent_question",
     ) -> None:
         key = _make_key(user_id, conversation_id)
-        payload = json.dumps({"question": question, "candidates": candidates, "original_query": original_query})
+        payload = json.dumps(
+            {
+                "question": question,
+                "candidates": candidates,
+                "original_query": original_query,
+                "clarification_type": clarification_type,
+            }
+        )
         if self._redis is not None:
             self._redis.set(key, payload, ex=settings.CLARIFICATION_TTL_SECONDS)
         else:
             self._mem_set(key, payload, settings.CLARIFICATION_TTL_SECONDS)
-        logger.info("clarification_pending", user_id=user_id, conversation_id=conversation_id)
+        logger.info(
+            "clarification_pending", user_id=user_id, conversation_id=conversation_id
+        )
 
     def get_pending(self, user_id: str, conversation_id: str) -> dict | None:
         key = _make_key(user_id, conversation_id)
@@ -88,4 +98,6 @@ class ClarificationState:
             self._redis.delete(key)
         else:
             self._mem_delete(key)
-        logger.info("clarification_cleared", user_id=user_id, conversation_id=conversation_id)
+        logger.info(
+            "clarification_cleared", user_id=user_id, conversation_id=conversation_id
+        )

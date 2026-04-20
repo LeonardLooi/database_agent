@@ -1,8 +1,9 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  input,
   computed,
+  input,
+  output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ChatMessage } from '../models/chat.models';
@@ -153,6 +154,41 @@ const PROVIDER_INITIAL: Record<string, string> = {
       color: var(--color-border-strong);
       font-family: var(--font-mono);
     }
+
+    /* Clarification candidate buttons */
+    .clarification-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .clarification-btn {
+      padding: 7px 13px;
+      border-radius: 6px;
+      border: 1px solid var(--color-accent);
+      background: transparent;
+      color: var(--color-accent);
+      font-size: 12px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.12s, color 0.12s;
+    }
+
+    .clarification-btn:hover:not([disabled]) {
+      background: var(--color-accent);
+      color: var(--color-canvas);
+    }
+
+    .clarification-btn[disabled],
+    .clarification-btn.answered {
+      border-color: var(--color-border-strong);
+      color: var(--color-text-tertiary);
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
   `],
   template: `
     <div class="message-row" [class.user]="message().role === 'user'" [class.assistant]="message().role === 'assistant'">
@@ -190,6 +226,19 @@ const PROVIDER_INITIAL: Record<string, string> = {
             }
           </div>
         }
+
+        @if (message().clarification) {
+          <div class="clarification-box">
+            @for (c of message().clarification!.candidates; track c) {
+              <button
+                class="clarification-btn"
+                [disabled]="message().clarification!.answered"
+                [class.answered]="message().clarification!.answered"
+                (click)="selectCandidate.emit(c)"
+              >{{ c }}</button>
+            }
+          </div>
+        }
       </div>
 
     </div>
@@ -197,6 +246,7 @@ const PROVIDER_INITIAL: Record<string, string> = {
 })
 export class MessageBubbleComponent {
   readonly message = input.required<ChatMessage>();
+  readonly selectCandidate = output<string>();
 
   readonly providerLabel = computed(() => {
     const p = this.message().provider ?? '';
