@@ -514,3 +514,78 @@ start
 ## 2026-04-19T05:47:05Z
 git push with commit messages describing the right changes
 ---
+
+## 2026-04-20T12:42:01Z
+fix the error INFO:     127.0.0.1:50697 - "WebSocket /ws/chat?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJndWVzdF83NmFlMzRlMzc1YTEiLCJleHAiOjE3NzkyNzc4MDUsImlhdCI6MTc3NjY4NTgwNX0.5j8mex4ApjBautN_BZ-sg5knON_KVWEshDh3PssVAaA" [accepted]
+{"user_id": "guest_76ae34e375a1", "total": 1, "event": "ws_connected", "level": "info", "timestamp": "2026-04-20T12:37:23.449618Z"}
+INFO:     connection open
+INFO:     127.0.0.1:50696 - "GET /api/conversations?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJndWVzdF83NmFlMzRlMzc1YTEiLCJleHAiOjE3NzkyNzc4MDUsImlhdCI6MTc3NjY4NTgwNX0.5j8mex4ApjBautN_BZ-sg5knON_KVWEshDh3PssVAaA HTTP/1.1" 200 OK
+{"user_id": "guest_76ae34e375a1", "error": "Error 8 connecting to redis:6379. nodename nor servname provided, or not known.", "event": "ws_unexpected_error", "level": "error", "timestamp": "2026-04-20T12:37:38.572227Z"}
+{"user_id": "guest_76ae34e375a1", "total": 0, "event": "ws_disconnected", "level": "info", "timestamp": "2026-04-20T12:37:38.572306Z"}
+INFO:     connection closed
+---
+
+## 2026-04-20T12:44:59Z
+there is no response (.venv) Elises-MacBook-Pro:backend elise$ ./start.sh
+==> Using uvicorn: /Users/elise/Desktop/Projects/database_agent/chatbot/.venv/bin/uvicorn
+==> Checking port 8000...
+==> Starting app.main:app on http://localhost:8000
+INFO:     Will watch for changes in these directories: ['/Users/elise/Desktop/Projects/database_agent/chatbot/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [24487] using WatchFiles
+INFO:     Started server process [24496]
+INFO:     Waiting for application startup.
+{"version": "1.0.0", "provider": "anthropic", "event": "startup", "level": "info", "timestamp": "2026-04-20T12:43:20.555221Z"}
+INFO:     Application startup complete.
+INFO:     127.0.0.1:50746 - "WebSocket /ws/chat?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJndWVzdF83NmFlMzRlMzc1YTEiLCJleHAiOjE3NzkyNzc4MDUsImlhdCI6MTc3NjY4NTgwNX0.5j8mex4ApjBautN_BZ-sg5knON_KVWEshDh3PssVAaA" [accepted]
+{"user_id": "guest_76ae34e375a1", "total": 1, "event": "ws_connected", "level": "info", "timestamp": "2026-04-20T12:43:26.629866Z"}
+INFO:     connection open
+INFO:     127.0.0.1:50745 - "GET /api/conversations?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJndWVzdF83NmFlMzRlMzc1YTEiLCJleHAiOjE3NzkyNzc4MDUsImlhdCI6MTc3NjY4NTgwNX0.5j8mex4ApjBautN_BZ-sg5knON_KVWEshDh3PssVAaA HTTP/1.1" 200 OK
+{"user_id": "guest_76ae34e375a1", "error": "Error 61 connecting to localhost:6379. Connection refused.", "event": "ws_unexpected_error", "level": "error", "timestamp": "2026-04-20T12:43:41.517218Z"}
+{"user_id": "guest_76ae34e375a1", "total": 0, "event": "ws_disconnected", "level": "info", "timestamp": "2026-04-20T12:43:41.517285Z"}
+INFO:     connection closed
+---
+
+## 2026-04-20T12:45:36Z
+using local dev
+---
+
+## 2026-04-20T12:47:51Z
+update the script to default not using redis. only use redis if it is enabled in .env
+---
+
+## 2026-04-20T12:51:21Z
+add AWS credentials to .env
+---
+
+## 2026-04-20T12:58:40Z
+make the llm_provider to follow .env, else default value
+---
+
+## 2026-04-20T13:00:12Z
+show only connectable provider or model to user for selection.
+---
+
+## 2026-04-20T13:02:49Z
+anthropic, openAI and gemini is empty value in .env, but UI is still showing the model for selection
+---
+
+## 2026-04-20T13:07:57Z
+give me instruction and code to deploy the entire repository to GCP
+---
+
+## 2026-04-20T13:11:11Z
+ensure that i can run both at local and gcp
+---
+
+## 2026-04-20T13:12:13Z
+update this instructions in readme.md
+---
+
+## 2026-04-20T13:16:36Z
+/documentation-generation
+---
+
+## 2026-04-20T13:20:46Z
+git push with commit message covering the changes
+---

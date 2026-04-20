@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
-    LLM_PROVIDER: str = "anthropic"
+    LLM_PROVIDER: str = ""  # set in .env; falls back to first registered provider
 
     # AWS Bedrock — credentials fall back to boto3 credential chain
     AWS_REGION: str = "us-east-1"
@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Redis — session DataFrame store + clarification state
+    # Set REDIS_ENABLED=true in .env to enable; defaults to in-memory fallback.
+    REDIS_ENABLED: bool = False
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # Snowflake connector

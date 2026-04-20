@@ -42,10 +42,15 @@ class AWSBedrockProvider(BaseLLMProvider):
     @classmethod
     def is_available(cls) -> bool:
         try:
-            import boto3 as _b  # noqa: F401
+            import boto3
             from strands.models.bedrock import BedrockModel as _m  # noqa: F401
-            _ = _b, _m  # suppress "not accessed" warning
-            return bool(settings.AWS_REGION)
+            session = boto3.Session(
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
+                aws_session_token=settings.AWS_SESSION_TOKEN or None,
+                region_name=settings.AWS_REGION,
+            )
+            return session.get_credentials() is not None
         except ImportError:
             return False
 

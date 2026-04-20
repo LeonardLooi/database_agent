@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import time
 from io import StringIO
+from typing import TYPE_CHECKING
 
 import pandas as pd
-import redis
 import structlog
 
 from app.core.config import settings
 
+if TYPE_CHECKING:
+    import redis
+
 logger = structlog.get_logger()
 
 _KEY_PREFIX = "df"
+
+# In-memory fallback: {key: (serialized_json, expiry_epoch)}
+_memory_store: dict[str, tuple[str, float]] = {}
 
 
 def _make_key(user_id: str, conversation_id: str, label: str) -> str:
@@ -18,40 +25,50 @@ def _make_key(user_id: str, conversation_id: str, label: str) -> str:
 
 
 class DataFrameStore:
-    """Redis-backed store for session-scoped DataFrames.
+    """Store for session-scoped DataFrames.
 
-    Key pattern : df:{user_id}:{conversation_id}:{label}
-    TTL         : settings.DATAFRAME_TTL_SECONDS (default 3600)
-    Serialization: df.to_json(orient='split') — avoids pickle security risk
+    Backed by Redis when a client is provided; falls back to an in-process dict
+    (single-worker, non-persistent) when Redis is disabled.
     """
 
     def __init__(self, redis_client: redis.Redis | None = None) -> None:
-        self._redis = redis_client or redis.from_url(
-            settings.REDIS_URL, decode_responses=True
-        )
+        self._redis = redis_client
 
-    def store(
-        self,
-        user_id: str,
-        conversation_id: str,
-        label: str,
-        df: pd.DataFrame,
-    ) -> None:
+    # ── internal helpers ────────────────────────────────────────────────────
+
+    def _mem_set(self, key: str, value: str, ttl: int) -> None:
+        _memory_store[key] = (value, time.monotonic() + ttl)
+
+    def _mem_get(self, key: str) -> str | None:
+        entry = _memory_store.get(key)
+        if entry is None:
+            return None
+        value, expiry = entry
+        if time.monotonic() > expiry:
+            del _memory_store[key]
+            return None
+        return value
+
+    def _mem_exists(self, key: str) -> bool:
+        return self._mem_get(key) is not None
+
+    def _mem_delete(self, key: str) -> None:
+        _memory_store.pop(key, None)
+
+    # ── public API ──────────────────────────────────────────────────────────
+
+    def store(self, user_id: str, conversation_id: str, label: str, df: pd.DataFrame) -> None:
         key = _make_key(user_id, conversation_id, label)
         serialized = df.to_json(orient="split")
-        self._redis.set(key, serialized, ex=settings.DATAFRAME_TTL_SECONDS)
-        logger.debug(
-            "dataframe_stored",
-            key=key,
-            rows=len(df),
-            columns=list(df.columns),
-        )
+        if self._redis is not None:
+            self._redis.set(key, serialized, ex=settings.DATAFRAME_TTL_SECONDS)
+        else:
+            self._mem_set(key, serialized, settings.DATAFRAME_TTL_SECONDS)
+        logger.debug("dataframe_stored", key=key, rows=len(df), columns=list(df.columns))
 
-    def retrieve(
-        self, user_id: str, conversation_id: str, label: str
-    ) -> pd.DataFrame | None:
+    def retrieve(self, user_id: str, conversation_id: str, label: str) -> pd.DataFrame | None:
         key = _make_key(user_id, conversation_id, label)
-        raw = self._redis.get(key)
+        raw = self._redis.get(key) if self._redis is not None else self._mem_get(key)
         if raw is None:
             logger.debug("dataframe_not_found", key=key)
             return None
@@ -61,14 +78,22 @@ class DataFrameStore:
 
     def exists(self, user_id: str, conversation_id: str, label: str) -> bool:
         key = _make_key(user_id, conversation_id, label)
-        return bool(self._redis.exists(key))
+        if self._redis is not None:
+            return bool(self._redis.exists(key))
+        return self._mem_exists(key)
 
     def delete(self, user_id: str, conversation_id: str, label: str) -> None:
         key = _make_key(user_id, conversation_id, label)
-        self._redis.delete(key)
+        if self._redis is not None:
+            self._redis.delete(key)
+        else:
+            self._mem_delete(key)
 
     def list_labels(self, user_id: str, conversation_id: str) -> list[str]:
-        pattern = _make_key(user_id, conversation_id, "*")
-        keys = self._redis.keys(pattern)
         prefix = _make_key(user_id, conversation_id, "")
+        if self._redis is not None:
+            keys = self._redis.keys(_make_key(user_id, conversation_id, "*"))
+        else:
+            now = time.monotonic()
+            keys = [k for k, (_, exp) in list(_memory_store.items()) if k.startswith(prefix) and now <= exp]
         return [k[len(prefix):] for k in keys]

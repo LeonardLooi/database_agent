@@ -223,3 +223,179 @@
 - chatbot/docker-compose.yml
 - chatbot/env.template
 <!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T12:42:26Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- blackbox/audit.md
+- chatbot/backend/app/core/config.py
+- chatbot/frontend/package-lock.json
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T12:45:03Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/core/config.py
+- chatbot/frontend/package-lock.json
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T12:45:39Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/core/config.py
+- chatbot/frontend/package-lock.json
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T12:49:08Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/frontend/package-lock.json
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T12:51:30Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/frontend/package-lock.json
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T12:59:21Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/data/chatbot.db
+- chatbot/env.template
+- chatbot/frontend/package-lock.json
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T13:00:52Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/services/llm/providers/aws_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/env.template
+- chatbot/frontend/package-lock.json
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T13:04:12Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/providers/aws_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/env.template
+- chatbot/frontend/package-lock.json
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T13:10:08Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/providers/aws_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/env.template
+- chatbot/frontend/Dockerfile
+- chatbot/frontend/angular.json
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/src/app/core/services/chat-ws.service.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T13:11:43Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/providers/aws_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/docker-compose.yml
+- chatbot/env.template
+- chatbot/frontend/Dockerfile
+- chatbot/frontend/angular.json
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/src/app/core/services/chat-ws.service.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T13:12:49Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/providers/aws_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/docker-compose.yml
+- chatbot/env.template
+- chatbot/frontend/Dockerfile
+- chatbot/frontend/angular.json
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/src/app/core/services/chat-ws.service.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T13:17:10Z -->
+- .claude/smart-suggest.jsonl
+- CLAUDE.md
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/providers/aws_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/docker-compose.yml
+- chatbot/env.template
+- chatbot/frontend/Dockerfile
+- chatbot/frontend/angular.json
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/src/app/core/services/chat-ws.service.ts
+<!-- end-snapshot -->

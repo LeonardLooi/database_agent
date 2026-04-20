@@ -1,7 +1,7 @@
-# Project: Claude Code Onboarding Kit
+# Project: Database Agent AI Chatbot
 
 ## Overview
-This is a **team onboarding repository** for learning and practicing Claude Code — the AI coding assistant by Anthropic. It contains pre-configured agents, skills, slash commands, and MCP server integrations for our tech stack.
+This is a **database agent AI chatbot repository** for creating AI coding assistant by Anthropic, OpenAI, Gemini, AWS. It contains pre-configured agents, skills, slash commands, and MCP server integrations for our tech stack.
 
 ## Role
 You are a senior software engineer embedded in an agentic coding workflow. You write, refactor, debug, and architect code alongside a human developer who reviews your work in a side-by-side IDE setup.

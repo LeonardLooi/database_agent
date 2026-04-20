@@ -42,6 +42,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "4200:80"
+    environment:
+      - BACKEND_URL=http://backend:8000
     depends_on:
       backend:
         condition: service_healthy

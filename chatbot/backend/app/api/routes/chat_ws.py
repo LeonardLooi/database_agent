@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-import redis as redis_lib
 import structlog
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
@@ -27,13 +26,16 @@ logger = structlog.get_logger()
 router = APIRouter(tags=["websocket"])
 
 # Lazily initialized shared objects (created once per worker process)
-_redis_client: redis_lib.Redis | None = None
+_redis_client = None
 _query_router: QueryRouter | None = None
 
 
-def _get_redis() -> redis_lib.Redis:
+def _get_redis():
     global _redis_client
+    if not settings.REDIS_ENABLED:
+        return None
     if _redis_client is None:
+        import redis as redis_lib
         _redis_client = redis_lib.from_url(settings.REDIS_URL, decode_responses=True)
     return _redis_client
 
@@ -158,8 +160,10 @@ async def chat_websocket(
 
             # ── resolve provider and model ──────────────────────────────────
             _registered = LLMProviderFactory.available_providers()
-            active_provider_name = settings.LLM_PROVIDER if settings.LLM_PROVIDER in _registered else (
-                _registered[0] if _registered else "anthropic"
+            active_provider_name = (
+                settings.LLM_PROVIDER
+                if settings.LLM_PROVIDER and settings.LLM_PROVIDER in _registered
+                else (_registered[0] if _registered else "anthropic")
             )
 
             provider = None

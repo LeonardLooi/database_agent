@@ -30,7 +30,9 @@ def _configure_logging() -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _configure_logging()
     logger = structlog.get_logger()
-    logger.info("startup", version=settings.APP_VERSION, provider=settings.LLM_PROVIDER)
+    from app.services.llm.factory import LLMProviderFactory
+    available = [p["provider"] for p in LLMProviderFactory.get_providers_data()]
+    logger.info("startup", version=settings.APP_VERSION, provider=settings.LLM_PROVIDER, available_providers=available)
     await create_tables()
     yield
     logger.info("shutdown")

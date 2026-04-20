@@ -29,7 +29,8 @@ export class ChatWsService implements OnDestroy {
     if (!token) return;
     if (this.socket$ && !this.socket$.closed) return;
 
-    const url = `${environment.wsUrl}/ws/chat?token=${token}`;
+    const wsBase = environment.wsUrl || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+    const url = `${wsBase}/ws/chat?token=${token}`;
 
     this.socket$ = webSocket<WsIncoming | WsOutgoing>({
       url,
