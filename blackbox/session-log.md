@@ -399,3 +399,30 @@
 - chatbot/frontend/package-lock.json
 - chatbot/frontend/src/app/core/services/chat-ws.service.ts
 <!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T14:10:53Z -->
+- blackbox/audit.md
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T14:11:09Z -->
+- blackbox/audit.md
+- blackbox/session-log.md
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T14:11:49Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T14:11:54Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-20T14:33:42Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+<!-- end-snapshot -->
