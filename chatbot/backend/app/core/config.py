@@ -24,8 +24,15 @@ class Settings(BaseSettings):
     # LLM providers
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
-    GOOGLE_API_KEY: str = ""
     LLM_PROVIDER: str = ""  # set in .env; falls back to first registered provider
+
+    # GCP / Gemini — ADC-based auth (no API key)
+    # Priority 1: impersonation — set to shared SA email
+    GCP_IMPERSONATE_SA: str = ""
+    # Priority 2: key file — path to service account JSON (also used by BigQuery connector)
+    # GOOGLE_APPLICATION_CREDENTIALS is declared below under BigQuery
+    # Priority 3: ambient ADC (gcloud auth application-default login)
+    GOOGLE_CLOUD_PROJECT: str = ""
 
     # AWS Bedrock — credentials fall back to boto3 credential chain
     AWS_REGION: str = "us-east-1"
@@ -65,9 +72,9 @@ class Settings(BaseSettings):
     SNOWFLAKE_SCHEMA: str = "PUBLIC"
     SNOWFLAKE_ROLE: str = ""
 
-    # BigQuery connector — ADC (Application Default Credentials)
-    # Set GOOGLE_APPLICATION_CREDENTIALS to path of service account JSON file
-    # OR mount ~/.config/gcloud into the container for gcloud auth
+    # BigQuery connector + Gemini (Priority 2 key-file auth)
+    # GOOGLE_APPLICATION_CREDENTIALS: path to service account JSON — shared by
+    # GeminiProvider._resolve_credentials() and BigQueryConnector.
     BIGQUERY_PROJECT_ID: str = ""
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
 
@@ -80,6 +87,7 @@ class Settings(BaseSettings):
 
     # Agent configuration
     INTENT_DIR: str = str(_BACKEND_DIR / "config" / "intents")
+    SKILLS_DIR: str = str(_BACKEND_DIR / "app" / "skills")
     PROMPT_DIR: str = str(_BACKEND_DIR / "config" / "prompts")
     MAX_DATAFRAME_ROWS: int = 10000
     MAX_TOOL_CALLS: int = 10

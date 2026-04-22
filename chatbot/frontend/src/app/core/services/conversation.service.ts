@@ -213,6 +213,7 @@ export class ConversationService {
           provider: msg.provider,
           model: msg.model,
           tokenCount: msg.token_count,
+          routingMetadata: msg.routing_metadata,
         };
       }
       return { ...c, messages, updatedAt: new Date() };

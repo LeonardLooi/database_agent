@@ -1,0 +1,25 @@
+version: "3.9"
+# Development overrides — hot reload for backend, volume mounts for skills.
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  backend:
+    volumes:
+      - ./backend:/app
+      - sqlite_data:/app/data
+      - ./backend/app/skills:/app/app/skills:ro
+    environment:
+      - DEBUG=true
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - BACKEND_URL=http://backend:8000

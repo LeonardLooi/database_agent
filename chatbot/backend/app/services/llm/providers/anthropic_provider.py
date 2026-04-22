@@ -11,7 +11,9 @@ from app.schemas.ws_messages import MsgIn
 from app.services.llm.base import AgentLoopResult, BaseLLMProvider
 
 if TYPE_CHECKING:
+    from app.agent.skill_registry import SkillSchema
     from app.agent.tools.query_tools import AgentToolContext
+    from app.services.llm.base import SkillResult
 
 logger = structlog.get_logger()
 
@@ -166,3 +168,45 @@ class AnthropicProvider(BaseLLMProvider):
             result.error = str(exc)
 
         return result
+
+    # ── skill execution ───────────────────────────────────────────────────────
+
+    async def execute_skill(
+        self,
+        session_id: str,
+        user_message: str,
+        skill: "SkillSchema",
+        params: dict,
+        model: str,
+    ) -> "SkillResult":
+        import json as _json
+
+        from app.agent.skill_prompt_builder import SkillPromptBuilder
+        from app.services.llm.base import RoutingDecision, SkillResult
+
+        system_prompt = SkillPromptBuilder.build(skill, params)
+        try:
+            response = await self._client.messages.create(
+                model=model,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+                max_tokens=2048,
+            )
+            output = response.content[0].text if response.content else ""
+        except Exception as exc:
+            logger.error("anthropic_execute_skill_error", error=str(exc), skill=skill.name)
+            raise
+
+        try:
+            parsed: dict | None = _json.loads(output)
+        except (ValueError, _json.JSONDecodeError):
+            parsed = None
+
+        return SkillResult(
+            output=output,
+            skill_name=skill.name,
+            model_used=model,
+            confidence=1.0,
+            routing_decision=RoutingDecision.CALL_SKILL,
+            parsed_output=parsed,
+        )

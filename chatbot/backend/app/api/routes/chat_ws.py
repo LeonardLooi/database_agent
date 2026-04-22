@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.clarification_state import ClarificationState
 from app.agent.dataframe_store import DataFrameStore
-from app.agent.query_router import QueryRouter
+from app.agent.orchestrator import ChatOrchestrator
 from app.agent.response_formatter import ResponseFormatter
+from app.agent.session_model_store import SessionModelStore
+from app.agent.skill_registry import SkillRegistry
 from app.agent.tools.query_tools import AgentToolContext
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -19,6 +21,7 @@ from app.core.security import decode_token
 from app.core.ws_manager import manager
 from app.models.conversation import Conversation, Message
 from app.schemas.ws_messages import MsgIn, WsIncoming
+from app.services.llm.base import RoutingDecision
 from app.services.llm.factory import LLMProviderFactory
 from app.services.llm_service import LLMService
 
@@ -27,7 +30,8 @@ router = APIRouter(tags=["websocket"])
 
 # Lazily initialized shared objects (created once per worker process)
 _redis_client = None
-_query_router: QueryRouter | None = None
+_skill_registry: SkillRegistry | None = None
+_session_model_store: SessionModelStore | None = None
 
 
 def _get_redis():
@@ -41,11 +45,18 @@ def _get_redis():
     return _redis_client
 
 
-def _get_query_router() -> QueryRouter:
-    global _query_router
-    if _query_router is None:
-        _query_router = QueryRouter()
-    return _query_router
+def _get_skill_registry() -> SkillRegistry:
+    global _skill_registry
+    if _skill_registry is None:
+        _skill_registry = SkillRegistry(settings.SKILLS_DIR)
+    return _skill_registry
+
+
+def _get_session_model_store() -> SessionModelStore:
+    global _session_model_store
+    if _session_model_store is None:
+        _session_model_store = SessionModelStore(_get_redis())
+    return _session_model_store
 
 
 async def _get_or_create_conversation(
@@ -168,14 +179,24 @@ async def chat_websocket(
             )
 
             provider = None
-            resolved_model = incoming.model or ""
+            # Session-stored model takes precedence over the per-message model sent by the client.
+            # This lets PATCH /session/{id}/model switch the model mid-session without the frontend
+            # needing to update every outgoing message.
+            conv_id_for_lookup = incoming.conversation_id or ""
+            session_stored_model = (
+                _get_session_model_store().get(conv_id_for_lookup)
+                if conv_id_for_lookup
+                else None
+            )
+            effective_model = session_stored_model or incoming.model or ""
+            resolved_model = effective_model
 
-            if incoming.model:
-                mapped = LLMProviderFactory.resolve_provider_for_model(incoming.model)
+            if effective_model:
+                mapped = LLMProviderFactory.resolve_provider_for_model(effective_model)
                 target_provider_name = mapped or active_provider_name
                 try:
                     provider = LLMProviderFactory.create(target_provider_name)
-                    resolved_model = incoming.model
+                    resolved_model = effective_model
                 except Exception as exc:
                     logger.warning("provider_switch_failed", error=str(exc))
 
@@ -198,11 +219,18 @@ async def chat_websocket(
             conv_id = incoming.conversation_id or str(uuid.uuid4())
             user_content = incoming.messages[-1].content if incoming.messages else ""
             _intent_hint = ""
+            # Populated by orchestrator route(); included in every done frame.
+            _routing_metadata: dict = {
+                "routing_decision": RoutingDecision.GENERIC_ANSWER.value,
+                "skill_name": None,
+                "confidence": 0.0,
+            }
 
-            # ── route: data query vs freeform chat ───────────────────────────
+            # ── route via ChatOrchestrator ────────────────────────────────────
             redis_client = _get_redis()
             store = DataFrameStore(redis_client)
             clarification_state = ClarificationState(redis_client)
+            orchestrator = ChatOrchestrator(provider, _get_skill_registry())
 
             # Resume clarification: if a question was pending, clear it and
             # route based on clarification type.
@@ -213,10 +241,8 @@ async def chat_websocket(
                 original_query = pending["original_query"]
 
                 if clarification_type == "intent_selection":
-                    # User selected an intent from the candidate list.
-                    # Candidates are formatted "intent_name: description" — split to get name.
                     selected_name = user_content.split(": ", 1)[0].strip()
-                    matched_intent = _get_query_router()._loader.get(selected_name)
+                    matched_intent = orchestrator.get_intent(selected_name)
 
                     if matched_intent:
                         resume_prefix = (
@@ -228,7 +254,6 @@ async def chat_websocket(
                         messages_for_loop = [MsgIn(role="user", content=resume_prefix)]
                         use_agent_loop = True
                     else:
-                        # No matching tool — fall through to generic LLM with context
                         messages_for_loop = [
                             MsgIn(
                                 role="user",
@@ -241,7 +266,6 @@ async def chat_websocket(
                         ]
                         use_agent_loop = False
                 else:
-                    # Existing agent_question resume: prepend original query + answer
                     resume_prefix = (
                         f"[Original question: {original_query}]\n"
                         f"[Clarification answer: {user_content}]"
@@ -253,28 +277,105 @@ async def chat_websocket(
                     ]
                     use_agent_loop = True
             else:
-                messages_for_loop = incoming.messages
-                use_agent_loop = bool(
-                    user_content and _get_query_router().is_data_query(user_content)
+                # ── skill routing ─────────────────────────────────────────────
+                orch_result = await orchestrator.route(
+                    user_message=user_content,
+                    session_id=conv_id,
+                    model=resolved_model,
                 )
+                _routing_metadata = {
+                    "routing_decision": orch_result.routing_decision.value,
+                    "skill_name": orch_result.matched_skill_name,
+                    "confidence": orch_result.confidence,
+                }
 
-            # ── pre-loop intent estimation (only on fresh data queries) ───────
+                if orch_result.routing_decision == RoutingDecision.CALL_SKILL:
+                    skill_output = (
+                        orch_result.skill_result.output if orch_result.skill_result else ""
+                    )
+                    async with AsyncSessionLocal() as db:
+                        _, is_new_conv = await _get_or_create_conversation(
+                            db, conv_id, user_id
+                        )
+                        await _save_messages(
+                            db,
+                            conv_id,
+                            user_content,
+                            skill_output,
+                            provider.provider_name,
+                            resolved_model,
+                            max(1, len(skill_output) // 4),
+                        )
+                    await manager.send_json(
+                        {
+                            "type": "done",
+                            "conversation_id": conv_id,
+                            "content": skill_output,
+                            "token_count": max(1, len(skill_output) // 4),
+                            "provider": provider.provider_name,
+                            "model": resolved_model,
+                            "routing_metadata": {
+                                "routing_decision": orch_result.routing_decision.value,
+                                "skill_name": orch_result.matched_skill_name,
+                                "confidence": orch_result.confidence,
+                            },
+                        },
+                        websocket,
+                    )
+                    if is_new_conv and user_content:
+                        asyncio.create_task(
+                            _generate_and_send_title(
+                                websocket, llm_service, user_content, conv_id
+                            )
+                        )
+                    continue
+
+                if orch_result.routing_decision == RoutingDecision.CLARIFY:
+                    from app.schemas.ws_messages import WsClarificationRequest
+
+                    clarification_state.set_pending(
+                        user_id=user_id,
+                        conversation_id=conv_id,
+                        question=orch_result.clarification_message or "",
+                        candidates=[],
+                        original_query=user_content,
+                        clarification_type="skill_clarification",
+                    )
+                    frame = WsClarificationRequest(
+                        message=orch_result.clarification_message or "",
+                        candidates=[],
+                    )
+                    await manager.send_json(frame.model_dump(), websocket)
+                    async with AsyncSessionLocal() as db:
+                        _, is_new_conv = await _get_or_create_conversation(
+                            db, conv_id, user_id
+                        )
+                        await _save_messages(
+                            db, conv_id, user_content, "", provider.provider_name, resolved_model, 0
+                        )
+                    if is_new_conv and user_content:
+                        asyncio.create_task(
+                            _generate_and_send_title(
+                                websocket, llm_service, user_content, conv_id
+                            )
+                        )
+                    continue
+
+                # GENERIC_ANSWER — orchestrator ran is_data_query internally
+                messages_for_loop = incoming.messages
+                use_agent_loop = orch_result.use_agent_loop
+                _intent_hint = orch_result.intent_hint
+
+            # ── pre-loop intent estimation (only on fresh unambiguous data queries) ──
             if use_agent_loop and not pending:
                 from app.schemas.ws_messages import WsClarificationRequest
 
-                estimation = _get_query_router().estimate_intent(user_content)
+                estimation = orchestrator.estimate_intent(user_content)
 
                 if estimation.confidence == 0.0:
-                    # No intent keyword matched — answer generically and surface intents
                     use_agent_loop = False
-                    all_intents = _get_query_router()._loader.all_intents()
-                    if all_intents:
-                        suggestions = "\n".join(
-                            f"  • {i.name}: {i.description}" for i in all_intents
-                        )
-                        _intent_hint = f"\n\n---\n*Available data topics I can query:*\n{suggestions}"
+                    # intent_hint already set by orchestrator._generic_answer()
                 elif estimation.is_ambiguous and estimation.candidates:
-                    # Multiple intents match with similar scores — ask user to choose
                     clarification_state.set_pending(
                         user_id=user_id,
                         conversation_id=conv_id,
@@ -308,7 +409,6 @@ async def chat_websocket(
                             )
                         )
                     continue
-                # else: clear single-intent match — proceed to agent loop unchanged
 
             full_content = ""
             is_new_conversation = False
@@ -390,7 +490,9 @@ async def chat_websocket(
                             max(1, len(full_content) // 4),
                         )
 
-                    await manager.send_json(agent_response.model_dump(), websocket)
+                    frame = agent_response.model_dump()
+                    frame["routing_metadata"] = _routing_metadata
+                    await manager.send_json(frame, websocket)
 
                     if is_new_conversation and user_content:
                         asyncio.create_task(
@@ -455,6 +557,7 @@ async def chat_websocket(
                     "token_count": token_count,
                     "provider": provider.provider_name,
                     "model": resolved_model,
+                    "routing_metadata": _routing_metadata,
                 },
                 websocket,
             )

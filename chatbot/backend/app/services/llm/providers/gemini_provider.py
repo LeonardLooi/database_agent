@@ -8,13 +8,18 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from app.core.config import settings
+from app.core.exceptions import AuthConfigError
 from app.schemas.ws_messages import MsgIn
 from app.services.llm.base import AgentLoopResult, BaseLLMProvider
 
 if TYPE_CHECKING:
+    from app.agent.skill_registry import SkillSchema
     from app.agent.tools.query_tools import AgentToolContext
+    from app.services.llm.base import SkillResult
 
 logger = structlog.get_logger()
+
+_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
 # ContextVar used to pass AgentToolContext into ADK tool functions without
 # changing their signatures (ADK wraps them as FunctionTool).
@@ -43,16 +48,114 @@ class GeminiProvider(BaseLLMProvider):
     available_models = ["gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
 
     def __init__(self) -> None:
-        if not settings.GOOGLE_API_KEY:
-            raise ValueError("GOOGLE_API_KEY is not configured")
+        self._credentials = self._resolve_credentials()
         import google.generativeai as genai
 
-        genai.configure(api_key=settings.GOOGLE_API_KEY)
+        genai.configure(credentials=self._credentials)
         self._genai = genai
 
     @classmethod
     def is_available(cls) -> bool:
-        return bool(settings.GOOGLE_API_KEY)
+        # ADC is always potentially available; fail fast at instantiation if not.
+        return True
+
+    # ── auth ──────────────────────────────────────────────────────────────────
+
+    def _resolve_credentials(self) -> Any:
+        """Resolve GCP credentials using a 3-priority ADC chain.
+
+        Priority 1 — Impersonation (production preferred):
+            Set GCP_IMPERSONATE_SA=shared-sa@project.iam.gserviceaccount.com.
+            Source credentials come from ambient ADC; the call impersonates the
+            shared service account.  Requires roles/iam.serviceAccountTokenCreator
+            on the caller identity.
+
+        Priority 2 — Key file (local dev fallback):
+            Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json.
+            Uses the service account key directly.
+
+        Priority 3 — Ambient ADC (last resort):
+            Uses whatever google.auth.default() resolves.  Logs a WARNING
+            because the identity may not be the intended shared SA.
+
+        Returns:
+            A google.auth.credentials.Credentials instance (auto-refreshable).
+
+        Raises:
+            AuthConfigError: if all three paths fail, with actionable remediation.
+        """
+        try:
+            import google.auth
+            import google.auth.exceptions
+            import google.auth.impersonated_credentials
+            import google.auth.transport.requests
+            import google.oauth2.service_account
+        except ImportError as exc:
+            raise AuthConfigError(
+                "google-auth is not installed. Add google-auth>=2.23.0 to requirements.txt."
+            ) from exc
+
+        # Priority 1 — Impersonation
+        if settings.GCP_IMPERSONATE_SA:
+            logger.info(
+                "gcp_auth_path",
+                path="impersonation",
+                target_principal=settings.GCP_IMPERSONATE_SA,
+            )
+            try:
+                source_creds, _ = google.auth.default(scopes=_SCOPES)
+                return google.auth.impersonated_credentials.Credentials(
+                    source_credentials=source_creds,
+                    target_principal=settings.GCP_IMPERSONATE_SA,
+                    target_scopes=_SCOPES,
+                )
+            except google.auth.exceptions.DefaultCredentialsError as exc:
+                raise AuthConfigError(
+                    f"GCP impersonation failed: source credentials not found.\n"
+                    f"Target SA: {settings.GCP_IMPERSONATE_SA}\n"
+                    f"Remediation: run 'gcloud auth application-default login' or "
+                    f"ensure the execution environment provides ambient ADC."
+                ) from exc
+
+        # Priority 2 — Key file
+        if settings.GOOGLE_APPLICATION_CREDENTIALS:
+            logger.info(
+                "gcp_auth_path",
+                path="key_file",
+                file=settings.GOOGLE_APPLICATION_CREDENTIALS,
+            )
+            try:
+                return google.oauth2.service_account.Credentials.from_service_account_file(
+                    settings.GOOGLE_APPLICATION_CREDENTIALS,
+                    scopes=_SCOPES,
+                )
+            except (FileNotFoundError, ValueError) as exc:
+                raise AuthConfigError(
+                    f"GCP key-file auth failed: {exc}\n"
+                    f"File: {settings.GOOGLE_APPLICATION_CREDENTIALS}\n"
+                    f"Remediation: verify the file path and that it is a valid "
+                    f"service account JSON key."
+                ) from exc
+
+        # Priority 3 — Ambient ADC
+        logger.warning(
+            "gcp_auth_ambient_adc",
+            message=(
+                "Shared SA not explicitly targeted. Verify ADC identity. "
+                "Set GCP_IMPERSONATE_SA or GOOGLE_APPLICATION_CREDENTIALS for production."
+            ),
+        )
+        try:
+            creds, _ = google.auth.default(scopes=_SCOPES)
+            return creds
+        except google.auth.exceptions.DefaultCredentialsError as exc:
+            raise AuthConfigError(
+                "GCP auth failed: no credentials found via any path.\n"
+                "Remediation options:\n"
+                "  Production:   set GCP_IMPERSONATE_SA=shared-sa@project.iam.gserviceaccount.com\n"
+                "  Local (key):  set GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json\n"
+                "  Local (ADC):  run 'gcloud auth application-default login'"
+            ) from exc
 
     # ── freeform helpers (google-generativeai) ────────────────────────────────
 
@@ -125,6 +228,16 @@ class GeminiProvider(BaseLLMProvider):
 
         from app.agent.shared_toolkit import SharedToolkit
 
+        # Refresh credentials so the ADK runner picks up a valid token.
+        # google.auth.transport.requests.Request refreshes synchronously;
+        # we run it in a thread to avoid blocking the event loop.
+        import google.auth.transport.requests
+
+        def _refresh() -> None:
+            self._credentials.refresh(google.auth.transport.requests.Request())
+
+        await asyncio.get_event_loop().run_in_executor(None, _refresh)
+
         toolkit = SharedToolkit()
 
         # Build ADK FunctionTools with ContextVar injection
@@ -153,19 +266,10 @@ class GeminiProvider(BaseLLMProvider):
             session_service=session_service,
         )
 
-        # Build ADK-format message history
-        from google.adk.sessions import Session
         from google.genai import types as genai_types
 
         user_query = messages[-1].content if messages else ""
-        history_parts: list[genai_types.Content] = []
-        for m in messages[:-1]:
-            role = "model" if m.role == "assistant" else "user"
-            history_parts.append(
-                genai_types.Content(role=role, parts=[genai_types.Part(text=m.content)])
-            )
 
-        # Inject ctx into ContextVar so wrapped tools can access it
         token = _agent_ctx_var.set(ctx)
         result = AgentLoopResult()
 
@@ -186,17 +290,12 @@ class GeminiProvider(BaseLLMProvider):
                             p.text for p in event.content.parts if p.text
                         )
 
-            # Check for pending clarification set by ask_clarification tool
             if ctx.clarification_state.is_pending(ctx.user_id, ctx.conversation_id):
                 result.status = "clarification_pending"
                 return result
 
             result.explanation = final_response_text
             result.status = "completed"
-
-            # Collect sql_used from DataFrameStore metadata is not stored separately;
-            # tools record sql in their return dicts. For now we leave sql_used empty —
-            # response_formatter fills it from stored frame metadata.
 
         except Exception as exc:
             logger.error(
@@ -211,3 +310,44 @@ class GeminiProvider(BaseLLMProvider):
             _agent_ctx_var.reset(token)
 
         return result
+
+    # ── skill execution ───────────────────────────────────────────────────────
+
+    async def execute_skill(
+        self,
+        session_id: str,
+        user_message: str,
+        skill: "SkillSchema",
+        params: dict,
+        model: str,
+    ) -> "SkillResult":
+        import json
+
+        from app.agent.skill_prompt_builder import SkillPromptBuilder
+        from app.services.llm.base import RoutingDecision, SkillResult
+
+        system_prompt = SkillPromptBuilder.build(skill, params)
+        try:
+            gen_model = self._genai.GenerativeModel(
+                model_name=model,
+                system_instruction=system_prompt,
+            )
+            response = await gen_model.generate_content_async(user_message)
+            output = response.text
+        except Exception as exc:
+            logger.error("gemini_execute_skill_error", error=str(exc), skill=skill.name)
+            raise
+
+        try:
+            parsed: dict | None = json.loads(output)
+        except (json.JSONDecodeError, ValueError):
+            parsed = None
+
+        return SkillResult(
+            output=output,
+            skill_name=skill.name,
+            model_used=model,
+            confidence=1.0,
+            routing_decision=RoutingDecision.CALL_SKILL,
+            parsed_output=parsed,
+        )

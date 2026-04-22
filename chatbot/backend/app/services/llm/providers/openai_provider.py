@@ -11,7 +11,9 @@ from app.schemas.ws_messages import MsgIn
 from app.services.llm.base import AgentLoopResult, BaseLLMProvider
 
 if TYPE_CHECKING:
+    from app.agent.skill_registry import SkillSchema
     from app.agent.tools.query_tools import AgentToolContext
+    from app.services.llm.base import SkillResult
 
 logger = structlog.get_logger()
 
@@ -190,3 +192,45 @@ class OpenAIProvider(BaseLLMProvider):
             result.error = str(exc)
 
         return result
+
+    # ── skill execution ───────────────────────────────────────────────────────
+
+    async def execute_skill(
+        self,
+        session_id: str,
+        user_message: str,
+        skill: "SkillSchema",
+        params: dict,
+        model: str,
+    ) -> "SkillResult":
+        from app.agent.skill_prompt_builder import SkillPromptBuilder
+        from app.services.llm.base import RoutingDecision, SkillResult
+
+        system_prompt = SkillPromptBuilder.build(skill, params)
+        try:
+            response = await self._client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                max_completion_tokens=2048,
+            )
+            output = response.choices[0].message.content or ""
+        except Exception as exc:
+            logger.error("openai_execute_skill_error", error=str(exc), skill=skill.name)
+            raise
+
+        try:
+            parsed: dict | None = json.loads(output)
+        except (json.JSONDecodeError, ValueError):
+            parsed = None
+
+        return SkillResult(
+            output=output,
+            skill_name=skill.name,
+            model_used=model,
+            confidence=1.0,
+            routing_decision=RoutingDecision.CALL_SKILL,
+            parsed_output=parsed,
+        )

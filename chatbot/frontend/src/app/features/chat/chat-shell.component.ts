@@ -5,11 +5,12 @@ import { ThemeService } from '../../core/services/theme.service';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { ChatWindowComponent } from './chat-window.component';
 import { ChatInputComponent } from './chat-input.component';
+import { ModelSelectorComponent } from './components/model-selector.component';
 
 @Component({
   selector: 'app-chat-shell',
   standalone: true,
-  imports: [SidebarComponent, ChatWindowComponent, ChatInputComponent],
+  imports: [SidebarComponent, ChatWindowComponent, ChatInputComponent, ModelSelectorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
     :host {
@@ -51,6 +52,7 @@ import { ChatInputComponent } from './chat-input.component';
       font-family: var(--font-mono);
     }
 
+    /* CHANGED: Apple ease on hover transitions [Phase 6] */
     .theme-toggle {
       display: flex;
       align-items: center;
@@ -63,7 +65,9 @@ import { ChatInputComponent } from './chat-input.component';
       cursor: pointer;
       color: var(--color-text-secondary);
       flex-shrink: 0;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      transition: background var(--duration-fast) var(--ease),
+                  border-color var(--duration-fast) var(--ease),
+                  color var(--duration-fast) var(--ease);
       padding: 0;
     }
 
@@ -85,10 +89,13 @@ import { ChatInputComponent } from './chat-input.component';
       <div class="top-bar">
         <span class="conv-title">{{ activeTitle() }}</span>
 
+        <app-model-selector />
+
         <button
           class="theme-toggle"
           (click)="toggleTheme()"
           [title]="theme.isDark() ? 'Switch to light mode' : 'Switch to dark mode'"
+          [attr.aria-label]="theme.isDark() ? 'Switch to light mode' : 'Switch to dark mode'"
         >
           @if (theme.isDark()) {
             <!-- Sun icon for light mode switch -->

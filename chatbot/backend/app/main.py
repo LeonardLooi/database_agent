@@ -54,9 +54,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.api.routes import auth, chat_ws, conversations, health  # noqa: E402
+from app.api.routes import auth, chat_ws, conversations, health, sessions  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(conversations.router)
+app.include_router(sessions.router)
 app.include_router(health.router)
 app.include_router(chat_ws.router)

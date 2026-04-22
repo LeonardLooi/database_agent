@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ChatMessage } from '../models/chat.models';
+import { RoutingBadgeComponent } from './routing-badge.component';
 
 const PROVIDER_DISPLAY: Record<string, string> = {
   anthropic: 'Claude',
@@ -25,11 +26,12 @@ const PROVIDER_INITIAL: Record<string, string> = {
 @Component({
   selector: 'app-message-bubble',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RoutingBadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
     :host { display: block; width: 100%; }
 
+    /* CHANGED: Apple ease on animations, system font sizes [Phase 6] */
     @keyframes msg-enter {
       from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -223,6 +225,9 @@ const PROVIDER_INITIAL: Record<string, string> = {
             @if (message().tokenCount) {
               <span class="meta-sep">·</span>
               <span class="meta">{{ message().tokenCount }}t</span>
+            }
+            @if (message().routingMetadata) {
+              <app-routing-badge [meta]="message().routingMetadata" />
             }
           </div>
         }

@@ -435,3 +435,237 @@
 - .claude/smart-suggest.jsonl
 - blackbox/audit.md
 <!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T11:51:43Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T12:02:03Z -->
+- .claude/smart-suggest.jsonl
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/requirements.txt
+- chatbot/env.template
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T12:15:11Z -->
+- .claude/smart-suggest.jsonl
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/services/llm/base.py
+- chatbot/backend/app/services/llm/providers/anthropic_provider.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/app/services/llm/providers/openai_provider.py
+- chatbot/backend/requirements.txt
+- chatbot/env.template
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T12:21:22Z -->
+- .claude/smart-suggest.jsonl
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/base.py
+- chatbot/backend/app/services/llm/providers/anthropic_provider.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/app/services/llm/providers/openai_provider.py
+- chatbot/backend/requirements.txt
+- chatbot/env.template
+- chatbot/frontend/src/app/core/services/providers.service.ts
+- chatbot/frontend/src/app/features/chat/chat-input.component.ts
+- chatbot/frontend/src/app/features/chat/chat-shell.component.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T12:32:38Z -->
+- .claude/smart-suggest.jsonl
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/base.py
+- chatbot/backend/app/services/llm/providers/anthropic_provider.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/app/services/llm/providers/openai_provider.py
+- chatbot/backend/requirements.txt
+- chatbot/docker-compose.yml
+- chatbot/env.template
+- chatbot/frontend/src/app/core/services/conversation.service.ts
+- chatbot/frontend/src/app/core/services/providers.service.ts
+- chatbot/frontend/src/app/features/chat/chat-input.component.ts
+- chatbot/frontend/src/app/features/chat/chat-shell.component.ts
+- chatbot/frontend/src/app/shared/components/message-bubble.component.ts
+- chatbot/frontend/src/app/shared/models/chat.models.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T12:38:21Z -->
+- .claude/smart-suggest.jsonl
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/base.py
+- chatbot/backend/app/services/llm/providers/anthropic_provider.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/app/services/llm/providers/openai_provider.py
+- chatbot/backend/requirements.txt
+- chatbot/docker-compose.yml
+- chatbot/env.template
+- chatbot/frontend/src/app/core/services/conversation.service.ts
+- chatbot/frontend/src/app/core/services/providers.service.ts
+- chatbot/frontend/src/app/features/chat/chat-input.component.ts
+- chatbot/frontend/src/app/features/chat/chat-shell.component.ts
+- chatbot/frontend/src/app/features/sidebar/sidebar.component.ts
+- chatbot/frontend/src/app/shared/components/message-bubble.component.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T12:42:02Z -->
+- .claude/smart-suggest.jsonl
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/base.py
+- chatbot/backend/app/services/llm/providers/anthropic_provider.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/app/services/llm/providers/openai_provider.py
+- chatbot/backend/requirements.txt
+- chatbot/docker-compose.yml
+- chatbot/env.template
+- chatbot/frontend/src/app/core/services/conversation.service.ts
+- chatbot/frontend/src/app/core/services/providers.service.ts
+- chatbot/frontend/src/app/features/chat/chat-input.component.ts
+- chatbot/frontend/src/app/features/chat/chat-shell.component.ts
+- chatbot/frontend/src/app/features/sidebar/sidebar.component.ts
+- chatbot/frontend/src/app/shared/components/message-bubble.component.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T12:57:48Z -->
+- .claude/smart-suggest.jsonl
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/base.py
+- chatbot/backend/app/services/llm/providers/anthropic_provider.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/app/services/llm/providers/openai_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/backend/requirements.txt
+- chatbot/docker-compose.yml
+- chatbot/env.template
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/src/app/core/services/conversation.service.ts
+- chatbot/frontend/src/app/core/services/providers.service.ts
+- chatbot/frontend/src/app/features/chat/chat-input.component.ts
+- chatbot/frontend/src/app/features/chat/chat-shell.component.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T13:02:19Z -->
+- .claude/smart-suggest.jsonl
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/base.py
+- chatbot/backend/app/services/llm/providers/anthropic_provider.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/app/services/llm/providers/openai_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/backend/requirements.txt
+- chatbot/docker-compose.yml
+- chatbot/docs/ARCHITECTURE.md
+- chatbot/env.template
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/src/app/core/services/conversation.service.ts
+- chatbot/frontend/src/app/core/services/providers.service.ts
+- chatbot/frontend/src/app/features/chat/chat-input.component.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T13:04:47Z -->
+- .claude/smart-suggest.jsonl
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/base.py
+- chatbot/backend/app/services/llm/providers/anthropic_provider.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/app/services/llm/providers/openai_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/backend/requirements.txt
+- chatbot/docker-compose.yml
+- chatbot/docs/ARCHITECTURE.md
+- chatbot/env.template
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/src/app/core/services/conversation.service.ts
+- chatbot/frontend/src/app/core/services/providers.service.ts
+- chatbot/frontend/src/app/features/chat/chat-input.component.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T13:06:54Z -->
+- .claude/smart-suggest.jsonl
+- README.md
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/base.py
+- chatbot/backend/app/services/llm/providers/anthropic_provider.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/app/services/llm/providers/openai_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/backend/requirements.txt
+- chatbot/docker-compose.yml
+- chatbot/docs/ARCHITECTURE.md
+- chatbot/env.template
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/src/app/core/services/conversation.service.ts
+- chatbot/frontend/src/app/core/services/providers.service.ts
+- chatbot/frontend/src/app/features/chat/chat-input.component.ts
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T13:08:16Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/core/config.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/base.py
+- chatbot/backend/app/services/llm/providers/anthropic_provider.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/app/services/llm/providers/openai_provider.py
+- chatbot/backend/data/chatbot.db
+- chatbot/backend/requirements.txt
+- chatbot/docker-compose.yml
+- chatbot/env.template
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/src/app/core/services/conversation.service.ts
+- chatbot/frontend/src/app/core/services/providers.service.ts
+- chatbot/frontend/src/app/features/chat/chat-input.component.ts
+- chatbot/frontend/src/app/features/chat/chat-shell.component.ts
+- chatbot/frontend/src/app/features/sidebar/sidebar.component.ts
+<!-- end-snapshot -->

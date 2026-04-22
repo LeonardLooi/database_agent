@@ -1,0 +1,129 @@
+/* CHANGED: extracted design tokens to a single source of truth [Phase 6 — Apple HIG] */
+
+/* ── Typography ─────────────────────────────────────────────────────────────
+   Apple system font stack — renders SF Pro on macOS/iOS, Segoe UI on Windows,
+   and the OS default elsewhere. Weights 400/500/600 only (HIG guidance).       */
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
+               system-ui, ui-sans-serif, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, 'Cascadia Code', 'JetBrains Mono',
+               'Fira Code', monospace;
+
+  /* 7-step type scale (Apple HIG caption2 → title1) */
+  --text-xs:   11px;   /* caption2  */
+  --text-sm:   12px;   /* caption   */
+  --text-base: 13px;   /* subhead   */
+  --text-md:   15px;   /* body      */
+  --text-lg:   17px;   /* headline  */
+  --text-xl:   20px;   /* title3    */
+  --text-2xl:  28px;   /* title1    */
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────────
+   Apple ease: cubic-bezier(0.25, 0.1, 0.25, 1) — ease-out, no bounce.         */
+:root {
+  --ease:           cubic-bezier(0.25, 0.1, 0.25, 1);
+  --duration-fast:  160ms;
+  --duration-base:  240ms;
+  --duration-slow:  320ms;
+}
+
+/* ── Light theme tokens ──────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --color-canvas:           #F3F6FA;
+  --color-surface:          #E8EFF8;
+  --color-surface-hover:    #DDE6F2;
+  --color-surface-active:   #D1DCED;
+
+  /* Glass — frosted input / backdrop */
+  --color-glass-bg:         rgba(243, 246, 250, 0.72);
+  --color-glass-border:     rgba(196, 209, 227, 0.6);
+
+  /* Borders */
+  --color-border:           #C4D1E3;
+  --color-border-strong:    #A2B3CA;
+
+  /* Text */
+  --color-text-primary:     #0A1626;
+  --color-text-secondary:   #3A5270;
+  --color-text-tertiary:    #7892AC;
+  --color-text-inverse:     #F3F6FA;
+
+  /* Accent — amber-700 */
+  --color-accent:           #B45309;
+  --color-accent-hover:     #92400E;
+  --color-accent-subtle:    rgba(180, 83, 9, 0.08);
+  --color-accent-muted:     rgba(180, 83, 9, 0.10); /* selected item bg */
+
+  /* Bubbles */
+  --color-bubble-user-bg:   #0A1626;
+  --color-bubble-user-text: #E8EFF8;
+  --color-bubble-ai-bg:     #DCE7F4;
+  --color-bubble-ai-text:   #0A1626;
+  --color-bubble-ai-border: rgba(180, 83, 9, 0.2);
+
+  /* Status */
+  --color-success:          #16A34A;
+  --color-error:            #DC2626;
+  --color-error-bg:         #FEF2F2;
+  --color-error-border:     #FECACA;
+  --color-error-text:       #B91C1C;
+
+  /* Routing badge — teal */
+  --color-teal:             #0F766E;
+  --color-teal-muted:       rgba(15, 118, 110, 0.12);
+  --color-teal-border:      rgba(15, 118, 110, 0.28);
+}
+
+/* ── Dark theme tokens ───────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --color-canvas:           #060B14;
+  --color-surface:          #0B1526;
+  --color-surface-hover:    #101D30;
+  --color-surface-active:   #16253D;
+
+  /* Glass */
+  --color-glass-bg:         rgba(6, 11, 20, 0.72);
+  --color-glass-border:     rgba(22, 32, 51, 0.7);
+
+  /* Borders */
+  --color-border:           #162033;
+  --color-border-strong:    #1E2E46;
+
+  /* Text */
+  --color-text-primary:     #C2D4E8;
+  --color-text-secondary:   #4A6685;
+  --color-text-tertiary:    #2C4060;
+  --color-text-inverse:     #060B14;
+
+  /* Accent — amber-400 on dark */
+  --color-accent:           #FBBF24;
+  --color-accent-hover:     #F59E0B;
+  --color-accent-subtle:    rgba(251, 191, 36, 0.08);
+  --color-accent-muted:     rgba(251, 191, 36, 0.10);
+
+  /* Bubbles */
+  --color-bubble-user-bg:   #0F1E33;
+  --color-bubble-user-text: #C2D4E8;
+  --color-bubble-ai-bg:     #0A1625;
+  --color-bubble-ai-text:   #C2D4E8;
+  --color-bubble-ai-border: rgba(251, 191, 36, 0.18);
+
+  /* Status */
+  --color-success:          #22C55E;
+  --color-error:            #F87171;
+  --color-error-bg:         #2D1515;
+  --color-error-border:     #7F1D1D;
+  --color-error-text:       #FCA5A5;
+
+  /* Routing badge — teal (dark) */
+  --color-teal:             #2DD4BF;
+  --color-teal-muted:       rgba(45, 212, 191, 0.12);
+  --color-teal-border:      rgba(45, 212, 191, 0.28);
+}

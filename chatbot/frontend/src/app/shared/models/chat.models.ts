@@ -20,12 +20,19 @@ export interface WsDelta {
   content: string;
 }
 
+export interface RoutingMetadata {
+  routing_decision: 'CALL_SKILL' | 'CLARIFY' | 'GENERIC_ANSWER';
+  skill_name: string | null;
+  confidence: number;
+}
+
 export interface WsDone {
   type: 'done';
   conversation_id: string;
   token_count: number;
   provider: string;
   model: string;
+  routing_metadata?: RoutingMetadata;
 }
 
 export interface WsError {
@@ -88,6 +95,7 @@ export interface ChatMessage {
   streaming?: boolean;
   error?: boolean;
   clarification?: ClarificationState;
+  routingMetadata?: RoutingMetadata;
 }
 
 export interface Conversation {

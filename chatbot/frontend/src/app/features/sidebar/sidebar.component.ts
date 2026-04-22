@@ -12,6 +12,7 @@ import { ConversationService } from '../../core/services/conversation.service';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
+    /* CHANGED: 260px width, 44px items, accent-muted selected, Apple ease [Phase 6] */
     :host {
       display: flex;
       flex-direction: column;
@@ -21,7 +22,7 @@ import { ConversationService } from '../../core/services/conversation.service';
       border-right: 1px solid var(--color-border);
       font-family: var(--font-sans);
       overflow: hidden;
-      transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: width var(--duration-base) var(--ease);
     }
 
     /* ── Shared header row ── */
@@ -52,7 +53,7 @@ import { ConversationService } from '../../core/services/conversation.service';
       width: 100%;
       padding: 0;
       color: var(--color-text-tertiary);
-      transition: background 0.15s, color 0.15s;
+      transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
       font-family: var(--font-sans);
       border-bottom: 1px solid var(--color-border);
     }
@@ -109,7 +110,7 @@ import { ConversationService } from '../../core/services/conversation.service';
       background: transparent;
       color: var(--color-text-tertiary);
       cursor: pointer;
-      transition: background 0.12s, color 0.12s;
+      transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
       padding: 0;
     }
 
@@ -142,7 +143,9 @@ import { ConversationService } from '../../core/services/conversation.service';
       font-size: 12.5px;
       font-weight: 500;
       cursor: pointer;
-      transition: background 0.12s, border-color 0.12s, color 0.12s;
+      transition: background var(--duration-fast) var(--ease),
+                  border-color var(--duration-fast) var(--ease),
+                  color var(--duration-fast) var(--ease);
       font-family: var(--font-sans);
       white-space: nowrap;
     }
@@ -167,7 +170,9 @@ import { ConversationService } from '../../core/services/conversation.service';
       justify-content: center;
       cursor: pointer;
       box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent) 40%, transparent);
-      transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+      transition: background var(--duration-fast) var(--ease),
+                       transform var(--duration-fast) var(--ease),
+                       box-shadow var(--duration-fast) var(--ease);
       padding: 0;
     }
 
@@ -208,13 +213,15 @@ import { ConversationService } from '../../core/services/conversation.service';
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 9px;
-      border-radius: 5px;
+      padding: 0 9px;
+      height: 44px;        /* HIG: minimum tappable row height */
+      border-radius: 7px;
       cursor: pointer;
       margin-bottom: 1px;
-      transition: background 0.1s, border-color 0.1s;
+      transition: background var(--duration-fast) var(--ease),
+                  border-color var(--duration-fast) var(--ease);
       color: var(--color-text-secondary);
-      font-size: 12px;
+      font-size: var(--text-sm);
       font-family: var(--font-sans);
       position: relative;
       border-left: 2px solid transparent;
@@ -225,7 +232,7 @@ import { ConversationService } from '../../core/services/conversation.service';
       color: var(--color-text-primary);
     }
     .conv-item.active {
-      background: var(--color-surface-active);
+      background: var(--color-accent-muted);   /* accent at 10% opacity — Apple selection */
       color: var(--color-text-primary);
       font-weight: 500;
       border-left-color: var(--color-accent);
@@ -270,7 +277,7 @@ import { ConversationService } from '../../core/services/conversation.service';
   template: `
     @if (collapsed()) {
       <!-- Collapsed header: entire row is one large click target -->
-      <button class="header-collapsed" (click)="toggle()" title="Expand sidebar">
+      <button class="header-collapsed" (click)="toggle()" title="Expand sidebar" aria-label="Expand sidebar">
         <svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
           <polyline points="13 17 18 12 13 7"/>
           <polyline points="6 17 11 12 6 7"/>
@@ -288,7 +295,7 @@ import { ConversationService } from '../../core/services/conversation.service';
           </svg>
         </div>
         <span class="app-name">Database Agent</span>
-        <button class="toggle-btn" (click)="toggle()" title="Collapse sidebar">
+        <button class="toggle-btn" (click)="toggle()" title="Collapse sidebar" aria-label="Collapse sidebar">
           <svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
             <rect x="3" y="3" width="18" height="18" rx="2"/>
             <path d="M9 3v18"/>
@@ -300,7 +307,7 @@ import { ConversationService } from '../../core/services/conversation.service';
     <!-- New chat: full button when expanded, bubble when collapsed -->
     <div class="new-chat-area">
       @if (collapsed()) {
-        <button class="new-chat-bubble" (click)="newChat()" title="New conversation">
+        <button class="new-chat-bubble" (click)="newChat()" title="New conversation" aria-label="New conversation">
           <svg fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
@@ -335,7 +342,7 @@ import { ConversationService } from '../../core/services/conversation.service';
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
             </svg>
             <span class="conv-title">{{ conv.title }}</span>
-            <button class="delete-btn" (click)="deleteConv($event, conv.id)" title="Delete">
+            <button class="delete-btn" (click)="deleteConv($event, conv.id)" title="Delete conversation" aria-label="Delete conversation">
               <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6"/>
                 <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
@@ -353,7 +360,7 @@ export class SidebarComponent {
   readonly collapsed = signal(false);
 
   @HostBinding('style.width')
-  get hostWidth(): string { return this.collapsed() ? '48px' : '240px'; }
+  get hostWidth(): string { return this.collapsed() ? '48px' : '260px'; }
 
   toggle(): void { this.collapsed.update(v => !v); }
 

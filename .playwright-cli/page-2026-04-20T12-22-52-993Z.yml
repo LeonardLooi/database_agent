@@ -1,0 +1,50 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e7]
+      - generic [ref=e11]: Database Agent
+      - button "Collapse sidebar" [ref=e12] [cursor=pointer]:
+        - img [ref=e13]
+    - button "New conversation" [ref=e16] [cursor=pointer]:
+      - img [ref=e17]
+      - text: New conversation
+    - generic [ref=e18]: Recent
+    - generic [ref=e20] [cursor=pointer]:
+      - img [ref=e21]
+      - generic [ref=e23]: New Chat
+  - generic [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]: New Chat
+      - button "Switch to dark mode" [ref=e27] [cursor=pointer]:
+        - img [ref=e28]
+    - generic [ref=e33]:
+      - img [ref=e35]
+      - paragraph [ref=e40]: Ask your database anything
+      - paragraph [ref=e41]: SQL · analysis · schemas · insights
+      - generic [ref=e42]:
+        - generic [ref=e43]: SELECT *
+        - generic [ref=e44]: GROUP BY
+        - generic [ref=e45]: EXPLAIN
+    - generic [ref=e47]:
+      - generic [ref=e48]:
+        - generic [ref=e49]: model
+        - combobox [ref=e50] [cursor=pointer]:
+          - option "claude-opus-4-20250514" [selected]
+          - option "claude-sonnet-4-20250514"
+          - option "claude-haiku-4-20251001"
+          - option "gpt-4o"
+          - option "gpt-4o-mini"
+          - option "o1"
+          - option "o3-mini"
+          - option "gemini-2.5-pro"
+          - option "gemini-2.0-flash"
+          - option "gemini-2.0-flash-lite"
+          - option "amazon.nova-pro-v1:0"
+          - option "amazon.nova-lite-v1:0"
+          - option "amazon.nova-micro-v1:0"
+        - generic [ref=e53]: connected
+      - generic [ref=e54]:
+        - textbox "SELECT * FROM your_question…" [active] [ref=e55]
+        - button "Send (Enter)" [disabled] [ref=e56]:
+          - img [ref=e57]
+      - paragraph [ref=e59]: enter ↵ send · shift+enter new line

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
@@ -8,7 +9,32 @@ from typing import TYPE_CHECKING, ClassVar
 from app.schemas.ws_messages import MsgIn
 
 if TYPE_CHECKING:
+    from app.agent.skill_registry import SkillSchema
     from app.agent.tools.query_tools import AgentToolContext
+
+
+class RoutingDecision(str, enum.Enum):
+    CALL_SKILL = "CALL_SKILL"
+    CLARIFY = "CLARIFY"
+    GENERIC_ANSWER = "GENERIC_ANSWER"
+
+
+@dataclass
+class SkillResult:
+    """Result of a YAML-driven skill execution via execute_skill().
+
+    Intentionally separate from AgentLoopResult:
+    - SkillResult  → YAML skill execution (NLP, document analysis, model-agnostic)
+    - AgentLoopResult → database agent tool-use loop (SQL queries, data retrieval)
+    Merging them would require many optional fields and obscure which flow produced the result.
+    """
+
+    output: str
+    skill_name: str
+    model_used: str
+    confidence: float
+    routing_decision: RoutingDecision
+    parsed_output: dict | None = None
 
 
 @dataclass
@@ -65,4 +91,17 @@ class BaseLLMProvider(ABC):
         """Run provider-native agent loop with tool use. Override in subclasses."""
         raise NotImplementedError(
             f"{self.__class__.__name__} does not implement run_agent_loop()"
+        )
+
+    async def execute_skill(
+        self,
+        session_id: str,
+        user_message: str,
+        skill: "SkillSchema",
+        params: dict,
+        model: str,
+    ) -> SkillResult:
+        """Execute a YAML-driven skill using this provider's LLM. Override in subclasses."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement execute_skill()"
         )

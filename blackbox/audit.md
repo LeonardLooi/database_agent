@@ -2300,3 +2300,686 @@ The MVP scope is well-defined, risks are catalogued with mitigations, and the im
 <usage><total_tokens>81920</total_tokens><tool_uses>88</tool_uses><duration_ms>310964</duration_ms></usage>
 </task-notification>
 ---
+
+## 2026-04-22T11:48:01Z
+/plan-mode-review ═══════════════════════════════════════════════════════════════════════════════
+CLAUDE CODE — FULL IMPLEMENTATION BRIEF
+═══════════════════════════════════════════════════════════════════════════════
+
+You are working on an existing repository. Follow this brief exactly and in
+order. Do NOT skip phases. Do NOT stop until all objectives pass their
+done criteria and all stress tests are green.
+
+───────────────────────────────────────────────────────────────────────────────
+PHASE 0 — DISCOVERY (READ ONLY, NO CHANGES)
+───────────────────────────────────────────────────────────────────────────────
+
+Before writing a single line of code:
+
+1. Scan and print the full repository tree (max 3 levels deep)
+2. Read every file in full: gemini_provider.py, all existing provider files,
+   all deployment configs (Dockerfile, docker-compose*, requirements.txt,
+   pyproject.toml, .env.example), all frontend source files, all test files
+3. List all environment variables currently in use across the codebase
+4. List all existing tools/functions/routes
+5. Identify what test framework is in use (pytest, jest, etc.)
+6. State any conflicts, ambiguities, or missing files before proceeding
+7. Produce a short AUDIT SUMMARY then wait for Phase 1
+
+───────────────────────────────────────────────────────────────────────────────
+OBJECTIVE 1 — GCP SHARED SERVICE ACCOUNT VIA ADC + IMPERSONATION
+───────────────────────────────────────────────────────────────────────────────
+
+File: gemini_provider.py
+
+Authenticate using Application Default Credentials (ADC) but explicitly
+target the team-space shared service account — not the caller's personal
+credentials nor the Compute Engine default service account.
+
+Auth resolution priority (implement as _resolve_credentials() helper):
+
+  Priority 1 — Impersonation (production preferred):
+    - Triggered when env var GCP_IMPERSONATE_SA is set
+    - Value format: shared-sa@project-id.iam.gserviceaccount.com
+    - Use google.auth.impersonated_credentials.Credentials
+    - Source credentials come from ambient ADC (gcloud or metadata server)
+    - Requires roles/iam.serviceAccountTokenCreator on the caller identity
+    - No key file needed
+
+  Priority 2 — Key file (local dev fallback):
+    - Triggered when GOOGLE_APPLICATION_CREDENTIALS is set to a file path
+    - Use google.oauth2.service_account.Credentials.from_service_account_file()
+    - Scope: https://www.googleapis.com/auth/cloud-platform
+
+  Priority 3 — Ambient ADC (last resort):
+    - google.auth.default() with cloud-platform scope
+    - Log a WARNING: "Shared SA not explicitly targeted. Verify ADC identity."
+
+Implementation rules:
+- Log WHICH auth path was chosen at INFO level (never log credential values)
+- Raise AuthConfigError with actionable remediation message if all paths fail
+- Credentials must auto-refresh (use google.auth.transport.requests.Request)
+- Add to README: how to configure each auth path for local dev vs production
+
+───────────────────────────────────────────────────────────────────────────────
+OBJECTIVE 2 — YAML-DRIVEN AI SKILL EXECUTION (MODEL-AGNOSTIC)
+───────────────────────────────────────────────────────────────────────────────
+
+Core concept:
+  The active AI model (Gemini, OpenAI, or Anthropic) reads the full YAML skill
+  definition — including its instructions, parameters, and execution steps —
+  and carries out those instructions directly. The YAML IS the program.
+  The AI model IS the executor. There is no separate Python executor function.
+
+─── Skill YAML Schema (skills/<skill_name>.yaml) ───────────────────────────
+
+name: summarise_document
+description: >
+  Summarise a document provided by the user. Extract key points,
+  decisions, and action items. Return a structured summary.
+instructions: |
+  You are a precise document analyst. When given a document:
+  1. Identify the document type (email, report, meeting notes, contract)
+  2. Extract a maximum of 5 key points as bullet items
+  3. List any decisions made (or state "None identified")
+  4. List action items with owner names if present
+  5. Produce a one-sentence executive summary
+  6. Respond ONLY in the output_format specified below. No preamble.
+parameters:
+  document_text:
+    type: string
+    required: true
+    description: The full text of the document to summarise
+  language:
+    type: string
+    required: false
+    default: "en"
+    description: ISO 639-1 language code for the response
+output_format: |
+  {
+    "executive_summary": "...",
+    "key_points": ["...", "..."],
+    "decisions": ["..."],
+    "action_items": [{"task": "...", "owner": "..."}],
+    "document_type": "..."
+  }
+tags: [document, summarisation, extraction]
+─────────────────────────────────────────────────────────────────────────────
+
+Implementation requirements:
+
+1. SkillRegistry class (skill_registry.py):
+   - Scans skills/*.yaml at startup and builds an in-memory registry
+   - Exposes: get_skill(name), list_skills(), get_all_descriptions()
+   - Dev mode: watch skills/ directory for YAML changes and hot-reload
+   - Validates YAML schema on load; log WARNING and skip invalid files
+
+2. BaseAIProvider abstract class (base_provider.py):
+   - Method signature:
+     async def execute_skill(
+         session_id: str,
+         user_message: str,
+         skill: SkillSchema,
+         params: dict
+     ) -> SkillResult
+   - SkillResult dataclass:
+     { output: str, parsed_output: dict | None, skill_name: str,
+       model_used: str, confidence: float, routing_decision: RoutingDecision }
+   - Method: build_skill_prompt(skill: SkillSchema, params: dict) -> str
+     Constructs the full prompt by combining:
+       • skill.instructions (the YAML instructions block)
+       • Resolved parameter values substituted into the instructions
+       • skill.output_format appended as the required response schema
+     This prompt is sent to the active AI model as the system + user context.
+   - Each provider sends this assembled prompt to its own API
+     (Gemini via ADK, OpenAI via openai SDK, Anthropic via anthropic SDK)
+   - The model response is parsed against output_format (attempt JSON parse;
+     fall back to raw string if format is free-text)
+
+3. ChatOrchestrator (orchestrator.py):
+   - Step 1: Receive user_message + session_id
+   - Step 2: Ask active_provider to detect which skill matches the message
+     by passing all skill descriptions as context and asking the model to
+     return the best matching skill name and extracted parameters as JSON.
+     If no skill matches with confidence >= 0.5, return None.
+   - Step 3: Apply routing (see Objective 4)
+   - Step 4: If CALL_SKILL → call active_provider.execute_skill() with the
+     matched skill's full YAML and extracted params. The model reads the YAML
+     instructions and produces the output directly.
+   - Step 5: Return SkillResult to the API layer
+
+4. Provider implementations:
+   - gemini_provider.py   → uses google.adk LlmAgent, system_instruction set
+                            to the assembled skill prompt
+   - openai_provider.py   → uses openai.AsyncOpenAI, messages=[system, user]
+   - anthropic_provider.py → uses anthropic.AsyncAnthropic, system + user
+
+5. Data flow:
+   User message
+     → ChatOrchestrator
+       → active_provider: "which skill matches?" + all skill descriptions
+         → returns { skill_name: "summarise_document", params: {...},
+                     confidence: 0.92 }
+       → SkillRegistry.get_skill("summarise_document")
+         → returns full YAML with instructions + output_format
+       → active_provider.execute_skill(skill_yaml, params)
+         → model reads YAML instructions + executes them
+         → returns structured SkillResult
+     → API response to user
+
+───────────────────────────────────────────────────────────────────────────────
+OBJECTIVE 3 — DYNAMIC MODEL SWITCHING
+───────────────────────────────────────────────────────────────────────────────
+
+Backend:
+- PATCH /session/{session_id}/model  body: { "model": "gpt-4o" }
+- Validate against SUPPORTED_MODELS config constant; return 400 on unknown
+- Swap active_provider on the session without clearing session history
+- SkillRegistry is never rebuilt on model switch (shared, model-agnostic)
+- Return { "model": "gpt-4o", "provider": "openai", "session_id": "..." }
+
+SUPPORTED_MODELS config example:
+  SUPPORTED_MODELS = {
+    "gemini-2.5-pro":   GeminiProvider,
+    "gemini-2.0-flash": GeminiProvider,
+    "gpt-4o":           OpenAIProvider,
+    "gpt-4o-mini":      OpenAIProvider,
+    "claude-sonnet-4":  AnthropicProvider,
+  }
+
+Frontend:
+- Model selector: Apple-style pill segmented control in the chat header
+- On change: call PATCH endpoint, show toast "Switched to gpt-4o"
+- Optimistic UI: update label immediately, revert on error
+- Persist selected model in localStorage key: "preferred_model"
+- Load persisted model on page load and call PATCH to sync with backend
+
+───────────────────────────────────────────────────────────────────────────────
+OBJECTIVE 4 — LOG-PROBABILITY CONFIDENCE ROUTING
+───────────────────────────────────────────────────────────────────────────────
+
+After the active model returns the skill-match response, apply this routing:
+
+RoutingDecision enum: CALL_SKILL | CLARIFY | GENERIC_ANSWER
+
+Rules:
+  confidence >= 0.85 AND skill matched  →  CALL_SKILL
+  0.50 <= confidence < 0.85             →  CLARIFY
+    emit: "I want to make sure I help correctly. Did you mean [skill desc]?"
+  confidence < 0.50 OR no skill matched →  GENERIC_ANSWER
+    emit: raw model answer without skill execution
+
+Confidence derivation (per provider):
+  - Gemini:    use candidate.grounding_metadata or avg token logprob if available;
+               fall back to heuristic: exact keyword match in skill description
+  - OpenAI:    use logprobs=True on the skill-match request; avg top token prob
+  - Anthropic: no native logprobs; use a follow-up self-evaluation prompt:
+               "Rate your confidence 0.0–1.0 that [skill] matches the request."
+               parse the float from the response
+
+routing_metadata added to every API response:
+  { "routing_decision": "CALL_SKILL", "skill_name": "...", "confidence": 0.92 }
+
+Frontend routing badge (below each assistant message):
+  CALL_SKILL     → "⚙ Tool Used"       muted teal pill
+  CLARIFY        → "? Clarifying"      muted amber pill
+  GENERIC_ANSWER → "✦ General Answer"  muted grey pill
+
+───────────────────────────────────────────────────────────────────────────────
+OBJECTIVE 5 — CROSS-PLATFORM DOCKER DEPLOYMENT (NO IIS, NO POWERSHELL ON MAC)
+───────────────────────────────────────────────────────────────────────────────
+
+Target environments:
+  Production     :  Windows Server 2022 + Docker (Mirantis Container Runtime)
+  Local Windows  :  Windows 10/11 + Docker Desktop  → PowerShell (.ps1)
+  Local macOS    :  macOS 13+    + Docker Desktop    → bash/zsh (.sh)
+
+Docker hosts EVERYTHING. There is no IIS. There is no external web server.
+Frontend and backend both run as Docker containers managed by docker-compose.
+nginx (as a Docker container) handles all reverse proxy and static file serving.
+
+─── Architecture inside Docker ──────────────────────────────────────────────
+
+  ┌─────────────────────────────────────────────────────┐
+  │                  docker-compose                     │
+  │                                                     │
+  │  ┌──────────┐   ┌──────────┐   ┌────────────────┐  │
+  │  │  nginx   │   │   api    │   │     redis      │  │
+  │  │  :80/443 │──▶│  :8000   │   │  session store │  │
+  │  │ (frontend│   │ (FastAPI │   │                │  │
+  │  │  static) │   │ /backend)│   │                │  │
+  │  └──────────┘   └──────────┘   └────────────────┘  │
+  └─────────────────────────────────────────────────────┘
+
+  nginx container responsibilities:
+    - Serve the compiled frontend static files (Angular/React build output)
+    - Reverse proxy /api/* → api:8000
+    - Handle SSL termination via self-signed cert (dev) or mounted cert (prod)
+    - No host-level web server required on any platform
+
+─── File Structure ──────────────────────────────────────────────────────────
+
+  scripts/
+    start.sh              # macOS — bash/zsh
+    stop.sh               # macOS — bash/zsh
+    rebuild.sh            # macOS — bash/zsh
+    check_prereqs.sh      # macOS — verifies Docker running, port free, env vars
+    start.ps1             # Windows Server + Windows PC — PowerShell
+    stop.ps1              # Windows Server + Windows PC — PowerShell
+    rebuild.ps1           # Windows Server + Windows PC — PowerShell
+    check_prereqs.ps1     # Windows — verifies Docker running, port free, env vars
+  nginx/
+    nginx.conf            # nginx reverse proxy + static file config
+    Dockerfile            # FROM nginx:alpine; COPY dist/ + nginx.conf
+  docker-compose.yml      # all services: nginx, api, redis
+  docker-compose.dev.yml  # overrides for local dev (volume mounts, hot reload)
+  .env.example            # every required env var documented
+
+─── docker-compose.yml ──────────────────────────────────────────────────────
+
+services:
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./nginx/certs:/etc/nginx/certs:ro
+    restart: unless-stopped
+
+  api:
+    build: .
+    expose:
+      - "8000"
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./skills:/app/skills:ro
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+─── nginx/nginx.conf ────────────────────────────────────────────────────────
+
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Serve frontend SPA — fallback to index.html for client-side routing
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Reverse proxy all API calls to the api container
+    location /api/ {
+        proxy_pass         http://api:8000/;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+    }
+}
+
+─── Scripts ─────────────────────────────────────────────────────────────────
+
+scripts/start.sh  (macOS — bash/zsh):
+  #!/usr/bin/env bash
+  set -euo pipefail
+  source "$(dirname "$0")/check_prereqs.sh"
+  docker compose pull
+  docker compose up -d --build
+  docker compose logs -f api
+
+scripts/start.ps1  (Windows — PowerShell):
+  #Requires -Version 5.1
+  Set-StrictMode -Version Latest
+  $ErrorActionPreference = "Stop"
+  & "$PSScriptRoot\check_prereqs.ps1"
+  $env:COMPOSE_CONVERT_WINDOWS_PATHS = "1"
+  docker compose pull
+  docker compose up -d --build
+  docker compose logs -f api
+
+scripts/check_prereqs.sh  (macOS):
+  - Verify docker and docker compose are installed
+  - Verify Docker daemon is running (docker info)
+  - Verify port 80 is not already bound
+  - Verify .env file exists (warn if missing, copy from .env.example)
+  - Exit 1 with clear message if any check fails
+
+scripts/check_prereqs.ps1  (Windows):
+  - Same checks using PowerShell equivalents
+  - Check Docker service: (Get-Service -Name "com.docker.service"
+    -ErrorAction SilentlyContinue)
+  - Check port: Test-NetConnection -Port 80 -ComputerName localhost
+  - Exit 1 with clear message if any check fails
+
+─── Windows Server Production Notes (in README) ─────────────────────────────
+
+  - Install Mirantis Container Runtime (not Docker Desktop) for server use
+  - Run scripts using PowerShell 5.1 (built-in) or PowerShell 7+ (preferred)
+  - Inject all secrets via Windows System Environment Variables
+    (not .env files in production)
+  - Open Windows Firewall for inbound TCP 80 and 443
+  - For auto-start on boot: create a Scheduled Task pointing to start.ps1
+    (provide register_startup_task.ps1 for this)
+  - SSL certs: mount via the nginx/certs volume in docker-compose.yml
+  - No IIS required or used at any layer
+
+─── macOS Local Notes (in README) ──────────────────────────────────────────
+
+  - Install Docker Desktop for Mac
+  - Enable Rosetta for x86/amd64 emulation on Apple Silicon if needed
+  - chmod +x scripts/*.sh then ./scripts/start.sh
+  - Use docker-compose.dev.yml override for hot reload:
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+─── Troubleshooting (in README) ─────────────────────────────────────────────
+
+  - Exec into api container:    docker compose exec api bash
+  - Exec into nginx container:  docker compose exec nginx sh
+  - Check nginx logs:           docker compose logs nginx
+  - Rebuild without cache:      docker compose build --no-cache
+  - Volume path errors on Windows: ensure COMPOSE_CONVERT_WINDOWS_PATHS=1
+    is set before running docker compose (start.ps1 handles this automatically)
+  - Port 80 already in use: stop any existing web server process on the host
+  - Inspect GOOGLE_APPLICATION_CREDENTIALS inside container:
+    docker compose exec api printenv GOOGLE_APPLICATION_CREDENTIALS
+
+───────────────────────────────────────────────────────────────────────────────
+OBJECTIVE 6 — UI/UX REDESIGN (APPLE SENIOR WEB DESIGNER STANDARD)
+───────────────────────────────────────────────────────────────────────────────
+
+You are acting as a Senior Web Designer from Apple's Human Interface team.
+Every decision must pass this test: "Would this ship in Safari or the App Store?"
+
+Design system:
+  Typography  : System font stack — -apple-system, BlinkMacSystemFont,
+                "SF Pro Display", "SF Pro Text", sans-serif
+                Scale: 11 / 13 / 15 / 17 / 22 / 28 / 34px with matching
+                line-heights; weight 400/500/600 only
+  Color       : CSS custom properties, adaptive light/dark
+                --bg-primary:     #F5F5F7 (light) / #1C1C1E (dark)
+                --bg-secondary:   #FFFFFF (light) / #2C2C2E (dark)
+                --text-primary:   #1D1D1F (light) / #F5F5F7 (dark)
+                --text-secondary: #6E6E73 (light) / #98989D (dark)
+                --accent:         #0071E3
+                --accent-hover:   #0077ED
+                --danger:         #FF3B30
+  Spacing     : 8pt grid — use multiples of 8px for all margins/padding
+  Motion      : cubic-bezier(0.25, 0.1, 0.25, 1); duration 200–320ms
+                No bounce, no spring, no overshoot
+  Radius      : 12px cards, 8px inputs/buttons, 20px pills
+  Shadows     : 0 1px 3px rgba(0,0,0,0.08) cards; no harsh box shadows
+
+Components:
+  Chat bubbles:
+    User      → right-aligned, background var(--accent), white text, 18px radius
+    Assistant → left-aligned, background var(--bg-secondary), var(--text-primary)
+  Model selector:
+    Apple segmented control (pill group, not a <select> dropdown)
+    Active segment: white bg + subtle shadow; inactive: transparent
+  Routing badge:
+    Small pill below each assistant bubble
+    ⚙ Tool Used      → background rgba(52,199,89,0.12)   text #34C759
+    ? Clarifying     → background rgba(255,159,10,0.12)  text #FF9F0A
+    ✦ General Answer → background rgba(142,142,147,0.12) text #8E8E93
+  Input bar:
+    Pinned to bottom, frosted glass backdrop-filter: blur(20px)
+    Rounded-rectangle input, no visible border until focus
+    Focus: 2px solid var(--accent), no outline
+  Sidebar (if exists):
+    Width 260px, var(--bg-secondary), conversation list items 44px tall
+    Selected item: var(--accent) at 10% opacity background
+
+Cross-browser requirements:
+  - Add all required -webkit- prefixes (backdrop-filter, appearance, etc.)
+  - Test and fix: Chrome 120+, Firefox 122+, Safari 17+, Edge 120+
+  - No CSS features below 92% global browser support (check caniuse)
+
+Responsive:
+  Mobile first. Breakpoints: 768px (tablet), 1024px (desktop)
+  On mobile: sidebar collapses to bottom sheet; input bar full width
+
+Accessibility (WCAG 2.1 AA minimum):
+  - All text contrast ratios verified
+  - Focus indicators on every interactive element
+  - ARIA labels on icon-only buttons
+  - Keyboard navigation for model selector and all controls
+
+Deliverables:
+  - tokens.css : all CSS custom properties in one file
+  - A comment block at top of each changed stylesheet:
+    /* CHANGED: [what changed] [why] */
+
+───────────────────────────────────────────────────────────────────────────────
+OBJECTIVE 7 — TEST SUITE + STRESS TESTS + BUG FIX LOOP
+───────────────────────────────────────────────────────────────────────────────
+
+Write tests AFTER all objectives are implemented. Use the existing test
+framework (pytest for backend, Jest/Vitest for frontend).
+
+── Unit Tests ────────────────────────────────────────────────────────────────
+
+Auth (test_auth.py):
+  - test_impersonation_path_selected_when_env_set
+  - test_keyfile_path_selected_when_credentials_env_set
+  - test_ambient_adc_fallback_logs_warning
+  - test_auth_config_error_raised_when_all_paths_fail
+  - test_credentials_never_logged (assert no credential strings in log output)
+
+SkillRegistry (test_skill_registry.py):
+  - test_skills_loaded_from_yaml_directory
+  - test_invalid_yaml_skipped_with_warning
+  - test_get_skill_returns_correct_schema
+  - test_list_skills_returns_all_names
+  - test_missing_required_field_in_yaml_raises_validation_error
+
+Routing (test_routing.py):
+  - test_call_skill_when_confidence_above_threshold
+  - test_clarify_when_confidence_in_middle_band
+  - test_generic_answer_when_confidence_below_threshold
+  - test_generic_answer_when_no_skill_matched
+  - test_routing_metadata_present_in_every_response
+
+Orchestrator (test_orchestrator.py):
+  - test_skill_executed_with_correct_params
+  - test_model_switch_preserves_session_history
+  - test_model_switch_rejects_unknown_model_name
+  - test_yaml_instructions_passed_to_model_as_prompt
+  - test_output_parsed_against_output_format_schema
+
+Provider parity (test_providers.py):
+  - test_gemini_builds_correct_skill_prompt
+  - test_openai_builds_correct_skill_prompt
+  - test_anthropic_builds_correct_skill_prompt
+  - test_all_providers_return_skill_result_dataclass
+  - test_provider_swap_does_not_affect_skill_registry
+
+── Integration Tests (test_integration.py) ──────────────────────────────────
+
+  - test_full_flow_skill_matched_and_executed_end_to_end
+  - test_full_flow_clarification_returned_on_low_confidence
+  - test_model_switch_mid_conversation_then_execute_skill
+  - test_invalid_yaml_skill_does_not_crash_registry
+  - test_session_isolated_across_concurrent_users
+
+── Stress Tests (test_stress.py) ────────────────────────────────────────────
+
+Run all 5 stress tests using pytest-asyncio + asyncio.gather for concurrency.
+Each test must PASS (no exceptions, no data corruption, response time logged).
+
+  ST-01 Concurrent sessions:
+    Spin up 50 concurrent sessions each sending 10 messages simultaneously.
+    Assert: all 500 responses received, no session data bleeds across users,
+    no unhandled exceptions, p95 response time logged.
+
+  ST-02 Rapid model switching:
+    Single session sends 100 model-switch requests in 2 seconds
+    (cycling through all SUPPORTED_MODELS).
+    Assert: every switch acknowledged, final model is consistent with
+    last switch, session history intact throughout.
+
+  ST-03 Large YAML skill library:
+    Generate 200 synthetic skill YAML files and load the registry.
+    Assert: startup completes under 3 seconds, skill selection still
+    returns the correct match, memory usage does not exceed 512MB.
+
+  ST-04 Malformed input flood:
+    Send 200 requests with: empty string, None, 10,000-character string,
+    special characters (null bytes, emoji, RTL text, SQL injection strings,
+    prompt injection attempts like "Ignore all instructions and...").
+    Assert: every request returns a valid HTTP response (400 or 200),
+    no 500 errors, no exceptions propagate to logs uncaught.
+
+  ST-05 Skill hot-reload under load:
+    While 20 concurrent sessions are actively sending messages,
+    add a new skill YAML file and delete an existing one.
+    Assert: in-flight requests complete successfully, new skill is
+    available within 2 seconds of file write, deleted skill returns
+    graceful "skill not found" response, no crashes.
+
+── Bug Fix Loop ──────────────────────────────────────────────────────────────
+
+After writing all tests, execute this loop and DO NOT STOP until it passes:
+
+  LOOP:
+    1. Run full test suite:  pytest -v --tb=short
+    2. If any test FAILS:
+       a. Read the full traceback
+       b. Identify root cause (do not guess — trace through the code)
+       c. Fix the bug in the source file
+       d. Add a regression test if the bug was not covered
+       e. Go to step 1
+    3. If all tests PASS:
+       a. Run stress tests: pytest test_stress.py -v --asyncio-mode=auto
+       b. If any stress test FAILS: fix and go to step 1
+       c. If all stress tests PASS: proceed to Done Criteria
+
+DO NOT declare completion until this loop exits cleanly.
+
+───────────────────────────────────────────────────────────────────────────────
+EXECUTION ORDER
+───────────────────────────────────────────────────────────────────────────────
+
+  Phase 0  → Discovery & audit
+  Phase 1  → Objective 1 (auth — all other objectives depend on this)
+  Phase 2  → Objective 2 (skill registry + base provider + orchestrator)
+  Phase 3  → Objective 3 (model switching BE + FE)
+  Phase 4  → Objective 4 (routing layer)
+  Phase 5  → Objective 5 (deployment scripts + Docker + README)
+  Phase 6  → Objective 6 (UI/UX redesign — after backend shape is final)
+  Phase 7  → Objective 7 (tests → stress tests → bug fix loop)
+
+───────────────────────────────────────────────────────────────────────────────
+GLOBAL CONSTRAINTS
+───────────────────────────────────────────────────────────────────────────────
+
+- Do NOT break existing API contracts; document any changes in BREAKING_CHANGES.md
+- Every new function: docstring + full type hints
+- No new dependency without adding to requirements.txt / pyproject.toml
+- All secrets via environment variables — never hardcoded, never logged
+- macOS scripts: bash/zsh .sh files only; Windows scripts: PowerShell .ps1 only
+- No .sh files on Windows; no PowerShell dependency on macOS
+- Commit message format: feat(scope): description  (Conventional Commits)
+
+───────────────────────────────────────────────────────────────────────────────
+DONE CRITERIA — DO NOT STOP BEFORE ALL ARE MET
+───────────────────────────────────────────────────────────────────────────────
+
+  ✓ Objective 1 : _resolve_credentials() logs correct auth path;
+                  AuthConfigError raised with clear message on failure
+  ✓ Objective 2 : Active model reads YAML instructions and executes them;
+                  adding a new skills/*.yaml requires zero Python changes
+  ✓ Objective 3 : Model switch mid-session preserves history;
+                  unknown model returns 400
+  ✓ Objective 4 : All three routing decisions reachable; routing_metadata
+                  present in every API response; UI badge renders correctly
+  ✓ Objective 5 : start.sh runs on macOS; start.ps1 runs on Windows Server
+                  and Windows PC; no IIS at any layer; all services run
+                  inside Docker containers including frontend via nginx
+  ✓ Objective 6 : UI passes visual check on Chrome, Firefox, Safari, Edge;
+                  WCAG AA contrast verified; responsive at 375px and 1440px
+  ✓ Objective 7 : pytest -v exits 0; all 5 stress tests green;
+                  zero unhandled exceptions in logs during stress runs
+
+═══════════════════════════════════════════════════════════════════════════════ add check mark in the execution plan and continue after session limit ended
+---
+
+## 2026-04-22T11:55:50Z
+R1 - replace API-key with ADC
+R2 - retire query_router.py and ensure other llm_provider follow gemini chatorchestrator method
+R3 - use nginx and make sure it can be run on local computer without docker. update angular proxy.conf.json + environment.ts and ensure the API and backend does not break.
+
+start Phase 1
+---
+
+## 2026-04-22T12:05:20Z
+start phase 2
+---
+
+## 2026-04-22T12:15:30Z
+start phase 3
+---
+
+## 2026-04-22T12:21:56Z
+start phase 4 and phase 5
+---
+
+## 2026-04-22T12:33:22Z
+start phase 6
+---
+
+## 2026-04-22T12:38:53Z
+start phase 7
+---
+
+## 2026-04-22T12:48:33Z
+/documentation-generation
+---
+
+## 2026-04-22T12:54:26Z
+/documentation-generation
+---
+
+## 2026-04-22T12:58:07Z
+update ARCHITECTURE.md
+---
+
+## 2026-04-22T13:03:30Z
+update Readme.md with cross-platform docker deployment. Im not deploying to GCP cloud run for production
+---
+
+## 2026-04-22T13:06:18Z
+update architecture.md on the deployment topology
+---
+
+## 2026-04-22T13:07:31Z
+git push with the commit message on the changes
+---
+
+## 2026-04-22T13:08:31Z
+git push all files
+---

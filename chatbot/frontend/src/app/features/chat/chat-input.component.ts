@@ -6,11 +6,9 @@ import {
   ViewChild,
   computed,
   inject,
-  signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ConversationService } from '../../core/services/conversation.service';
-import { ProvidersService } from '../../core/services/providers.service';
 import { ChatWsService } from '../../core/services/chat-ws.service';
 
 @Component({
@@ -32,42 +30,6 @@ import { ChatWsService } from '../../core/services/chat-ws.service';
       align-items: center;
       gap: 8px;
       margin-bottom: 8px;
-    }
-
-    .model-label {
-      font-size: 10px;
-      font-weight: 500;
-      color: var(--color-text-tertiary);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      white-space: nowrap;
-      font-family: var(--font-mono);
-    }
-
-    .model-select {
-      flex: 1;
-      max-width: 280px;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      color: var(--color-text-primary);
-      font-size: 12px;
-      font-family: var(--font-mono);
-      border-radius: 5px;
-      padding: 4px 28px 4px 9px;
-      outline: none;
-      cursor: pointer;
-      transition: border-color 0.15s;
-      appearance: none;
-      -webkit-appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%237892AC' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 9px center;
-    }
-
-    .model-select:focus { border-color: var(--color-accent); }
-    .model-select option, .model-select optgroup {
-      background: var(--color-surface);
-      color: var(--color-text-primary);
     }
 
     .spacer { flex: 1; }
@@ -103,29 +65,35 @@ import { ChatWsService } from '../../core/services/chat-ws.service';
       gap: 8px;
     }
 
+    /* CHANGED: frosted glass, borderless until focus, Apple ease [Phase 6] */
     .textarea {
       flex: 1;
       resize: none;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
+      background: var(--color-glass-bg);
+      -webkit-backdrop-filter: blur(10px) saturate(1.4);
+      backdrop-filter: blur(10px) saturate(1.4);
+      border: 1px solid transparent;
+      border-radius: 10px;
       padding: 9px 13px;
-      font-size: 13.5px;
+      font-size: var(--text-base);
       font-family: var(--font-sans);
       color: var(--color-text-primary);
       line-height: 1.55;
       outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
+      transition: border-color var(--duration-fast) var(--ease),
+                  box-shadow    var(--duration-fast) var(--ease),
+                  background    var(--duration-fast) var(--ease);
     }
 
     .textarea::placeholder {
       color: var(--color-text-tertiary);
       font-family: var(--font-mono);
-      font-size: 12.5px;
+      font-size: var(--text-sm);
     }
 
     .textarea:focus {
       border-color: var(--color-accent);
+      background: var(--color-surface);
       box-shadow: 0 0 0 3px var(--color-accent-subtle);
     }
 
@@ -144,7 +112,10 @@ import { ChatWsService } from '../../core/services/chat-ws.service';
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: background 0.15s, box-shadow 0.15s, transform 0.1s, opacity 0.15s;
+      transition: background var(--duration-fast) var(--ease),
+                  box-shadow  var(--duration-fast) var(--ease),
+                  transform   var(--duration-fast) var(--ease),
+                  opacity     var(--duration-fast) var(--ease);
       outline: none;
       padding: 0;
     }
@@ -189,35 +160,17 @@ import { ChatWsService } from '../../core/services/chat-ws.service';
   `],
   template: `
     <div class="input-bar">
-      @if (providers.hasProviders()) {
-        <div class="model-row">
-          <span class="model-label">model</span>
-          <select
-            class="model-select"
-            [value]="selectedModel()"
-            (change)="onModelChange($event)"
-          >
-            @for (group of providers.providerGroups(); track group.provider) {
-              <optgroup [label]="group.label">
-                @for (model of group.models; track model) {
-                  <option [value]="model">{{ model }}</option>
-                }
-              </optgroup>
-            }
-          </select>
-
-          <div class="spacer"></div>
-
-          <div class="status-indicator">
-            <div
-              class="status-dot"
-              [class.connected]="ws.connected()"
-              [class.disconnected]="!ws.connected()"
-            ></div>
-            <span class="status-label">{{ ws.connected() ? 'connected' : 'reconnecting' }}</span>
-          </div>
+      <div class="model-row">
+        <div class="spacer"></div>
+        <div class="status-indicator">
+          <div
+            class="status-dot"
+            [class.connected]="ws.connected()"
+            [class.disconnected]="!ws.connected()"
+          ></div>
+          <span class="status-label">{{ ws.connected() ? 'connected' : 'reconnecting' }}</span>
         </div>
-      }
+      </div>
 
       <div class="input-row">
         <textarea
@@ -259,12 +212,9 @@ export class ChatInputComponent implements OnInit {
   @ViewChild('inputRef') inputRef!: ElementRef<HTMLTextAreaElement>;
 
   readonly conversations = inject(ConversationService);
-  readonly providers = inject(ProvidersService);
   readonly ws = inject(ChatWsService);
 
   protected draft = '';
-
-  protected readonly selectedModel = this.providers.selectedModel;
 
   protected readonly isDisabled = computed(
     () => this.conversations.streaming() || !this.ws.connected(),
@@ -279,11 +229,6 @@ export class ChatInputComponent implements OnInit {
       this.conversations.newConversation();
     }
     this.ws.connect();
-  }
-
-  protected onModelChange(event: Event): void {
-    const target = event.target as HTMLSelectElement;
-    this.providers.selectModel(target.value);
   }
 
   protected onKeyDown(event: KeyboardEvent): void {

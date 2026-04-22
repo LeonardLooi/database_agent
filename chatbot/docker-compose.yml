@@ -19,13 +19,15 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
+    # No external port — nginx is the sole public entry point.
+    expose:
+      - "8000"
     env_file:
       - .env
     volumes:
-      - ./backend:/app
       - sqlite_data:/app/data
+      # Skills YAML — read-only mount; hot-reload via watchdog picks up changes.
+      - ./backend/app/skills:/app/app/skills:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -40,13 +42,24 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "4200:80"
+    expose:
+      - "80"
     environment:
       - BACKEND_URL=http://backend:8000
     depends_on:
       backend:
         condition: service_healthy
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
 
 volumes:
   sqlite_data:
