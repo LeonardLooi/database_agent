@@ -1448,3 +1448,855 @@ Each provider receives these canonical tools (see SharedToolkit in `app/agent/sh
 ## 2026-04-22T07:21:30Z
 Use .Claude/skills/documentation-generation to Update all documentation including readme. Include the architecture design and logic
 ---
+
+## 2026-04-22T07:26:54Z
+<task-notification>
+<task-id>ad3ca5bd79a19d7a1</task-id>
+<tool-use-id>toolu_01NHVuvZEP2jdeKuHHyahhqe</tool-use-id>
+<output-file>/tmp/claude-0/-home-user-database-agent/80eede5d-45b4-461c-8df6-0cac70540c7e/tasks/ad3ca5bd79a19d7a1.output</output-file>
+<status>completed</status>
+<summary>Agent "Codebase exploration for documentation" completed</summary>
+<result>Perfect! Now I have a comprehensive understanding of the project. Let me compile the thorough documentation report:
+
+---
+
+## Comprehensive Database Agent Codebase Documentation
+
+### Project Overview
+
+The **Database Agent Chatbot** is a production-grade, full-stack AI chatbot with a Python/FastAPI backend and Angular frontend. It supports multiple LLM providers (Anthropic, OpenAI, Google Gemini via ADK, AWS Bedrock) with real-time streaming via WebSocket and persistent conversation history in SQLite. The system includes an agentic orchestration layer that can route queries to multiple databases (Snowflake, BigQuery, MSSQL) with shared DataFrame management and clarification workflows.
+
+**Current Status:** MVP implementation in progress (approved 2026-04-19)
+
+---
+
+## 1. Project Directory Structure (3 levels deep)
+
+```
+/home/user/database_agent/
+├── .claude/                           # Claude Code agent &amp; skill configurations
+│   ├── agents/                        # 60+ specialized agent definitions
+│   ├── commands/                      # Slash command handlers
+│   ├── hooks/                         # Pre-commit, workflow automation
+│   ├── rules/                         # Core behaviors, verification standards
+│   ├── scripts/                       # Utility scripts
+│   ├── skills/                        # 80+ technology-specific skill guides
+│   ├── hookify/                       # Design system components
+│   └── SKILLS_GUIDE.md                # Master index of all skills
+├── chatbot/                           # Main application (monorepo)
+│   ├── backend/                       # Python FastAPI backend
+│   │   ├── app/
+│   │   │   ├── agent/                 # Agentic orchestration layer
+│   │   │   │   ├── tools/             # Canonical tools (query, combine, clarify)
+│   │   │   │   ├── connectors/        # DB connectors (Snowflake, BigQuery, MSSQL)
+│   │   │   │   ├── clarification_state.py
+│   │   │   │   ├── dataframe_store.py # Redis-backed DataFrame store
+│   │   │   │   ├── intent_loader.py
+│   │   │   │   ├── query_router.py    # Data query classifier
+│   │   │   │   ├── response_formatter.py
+│   │   │   │   └── shared_toolkit.py
+│   │   │   ├── api/routes/            # API endpoints
+│   │   │   │   ├── auth.py            # JWT auth
+│   │   │   │   ├── chat_ws.py         # WebSocket orchestration
+│   │   │   │   ├── conversations.py   # CRUD conversations
+│   │   │   │   └── health.py          # Health check
+│   │   │   ├── core/                  # Infrastructure
+│   │   │   │   ├── config.py          # Settings from env + .env files
+│   │   │   │   ├── database.py        # SQLAlchemy async session
+│   │   │   │   ├── security.py        # JWT token ops
+│   │   │   │   └── ws_manager.py      # WebSocket connection manager
+│   │   │   ├── models/                # SQLAlchemy ORM
+│   │   │   │   └── conversation.py    # Conversation + Message models
+│   │   │   ├── schemas/               # Pydantic v2 request/response
+│   │   │   │   ├── conversation.py
+│   │   │   │   └── ws_messages.py     # All WebSocket frame definitions
+│   │   │   ├── services/
+│   │   │   │   ├── llm/               # LLM provider abstraction
+│   │   │   │   │   ├── base.py        # BaseLLMProvider ABC
+│   │   │   │   │   ├── factory.py     # Provider discovery &amp; registration
+│   │   │   │   │   └── providers/     # Concrete implementations
+│   │   │   │   │       ├── anthropic_provider.py    # tool_use loop
+│   │   │   │   │       ├── openai_provider.py       # function_calling loop
+│   │   │   │   │       ├── gemini_provider.py       # Google ADK
+│   │   │   │   │       └── aws_provider.py          # Strands Agent dual mode
+│   │   │   │   └── llm_service.py     # Unified LLM interface (stream)
+│   │   │   └── main.py                # FastAPI app entry
+│   │   ├── config/
+│   │   │   ├── intents/               # YAML intent definitions
+│   │   │   │   └── sample_intents.yaml
+│   │   │   └── prompts/               # LLM prompt templates (Markdown)
+│   │   │       ├── sales_revenue.md
+│   │   │       └── sales_vs_crm.md
+│   │   ├── tests/                     # pytest fixtures + test modules
+│   │   │   ├── conftest.py
+│   │   │   ├── test_agent_loop.py
+│   │   │   ├── test_clarification_flow.py
+│   │   │   ├── test_combine_tools.py
+│   │   │   ├── test_intent_clarification_integration.py
+│   │   │   ├── test_intent_loader.py
+│   │   │   └── test_query_router.py
+│   │   ├── alembic/                   # Database migrations (SQLAlchemy)
+│   │   ├── data/                      # SQLite database &amp; logs
+│   │   ├── Dockerfile                 # Container image (Python 3.12+)
+│   │   ├── requirements.txt
+│   │   ├── start.sh                   # Local dev startup script
+│   │   └── alembic.ini
+│   ├── frontend/                      # Angular 21 SPA
+│   │   ├── src/app/
+│   │   │   ├── core/services/         # auth, chat-ws, conversation, providers, theme
+│   │   │   ├── features/
+│   │   │   │   ├── chat/              # Chat window, input, message bubble
+│   │   │   │   └── sidebar/           # Conversation list, new chat
+│   │   │   ├── shared/
+│   │   │   │   ├── components/        # Reusable UI components
+│   │   │   │   └── models/            # TypeScript interfaces
+│   │   │   ├── app.component.ts
+│   │   │   ├── app.routes.ts
+│   │   │   └── app.config.ts
+│   │   ├── src/environments/          # env.ts (dev), env.prod.ts (prod)
+│   │   ├── Dockerfile
+│   │   ├── package.json
+│   │   └── proxy.conf.json            # ng serve proxy for WebSocket
+│   ├── docs/plans/                    # Architecture planning docs
+│   │   └── 2026-04-19-agentic-data-chatbot.md  # MVP spec
+│   ├── env.template                   # Configuration template
+│   ├── docker-compose.yml             # Local dev orchestration
+│   └── .env                           # (git-ignored) runtime config
+├── blackbox/                          # Audit logging
+│   ├── session-log.md                 # Change snapshots per session
+│   └── audit.md                       # Raw user prompts
+├── .mcp.json                          # MCP server registry (20+ servers)
+├── .gitignore
+├── README.md                          # User-facing getting started
+├── CLAUDE.md                          # Developer workflow &amp; tech stack
+└── .git/                              # Version control
+```
+
+---
+
+## 2. Tech Stack with Versions
+
+### Backend (Python)
+
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| **Python** | 3.12+ | Runtime |
+| **FastAPI** | Latest | Web framework &amp; WebSocket |
+| **Uvicorn** | Latest (standard) | ASGI server |
+| **SQLAlchemy** | &gt;=2.0 | Async ORM |
+| **Pydantic** | &gt;=2.0 | Data validation (BaseModel + BaseSettings) |
+| **Alembic** | Latest | DB migrations |
+| **aiosqlite** | Latest | Async SQLite driver |
+| **PyJWT** | &gt;=2.9 | JWT token signing/verification |
+| **anthropic** | &gt;=0.40 | Anthropic Claude API |
+| **openai** | &gt;=1.58 | OpenAI GPT API |
+| **google-generativeai** | &gt;=0.8 | Google Gemini API |
+| **google-adk** | &gt;=1.28.0 | Google Agent Development Kit (ADK) |
+| **boto3** | &gt;=1.35 | AWS Bedrock integration |
+| **strands-agents** | &gt;=0.1 | AWS Strands Agent framework |
+| **httpx** | Latest | HTTP client (LLM calls) |
+| **websockets** | Latest | WebSocket protocol |
+| **structlog** | Latest | JSON structured logging |
+| **redis** | &gt;=5.0.0 | Session store (DataFrameStore) |
+| **fakeredis** | &gt;=2.26.0 (aioredis) | Testing Redis mock |
+| **snowflake-connector-python** | &gt;=3.12.0 | Snowflake SQL + Cortex APIs |
+| **google-cloud-bigquery** | &gt;=3.25.0 | BigQuery client (ADC auth) |
+| **pyodbc** | &gt;=5.1.0 | MSSQL/pyodbc sync connector |
+| **pandas** | &gt;=2.2.0 | DataFrame combine + serialization |
+| **PyYAML** | &gt;=6.0.2 | Intent definition parsing |
+| **pytest** | &gt;=8.3 | Unit testing |
+| **pytest-asyncio** | &gt;=0.24 | Async test fixtures |
+
+### Frontend (Angular)
+
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| **Node.js** | ^20.19 \| ^22.12 \| &gt;=24 | Runtime |
+| **npm** | &gt;=10.9.0 | Package manager |
+| **Angular** | 21.2.7 | SPA framework (standalone components, Signals) |
+| **TypeScript** | ~5.9.3 | Language |
+| **RxJS** | ~7.8.0 | Reactive streams |
+| **Angular CDK** | 21.2.7 | Component primitives |
+| **Tailwind CSS** | 4.2.0 | Utility-first styling |
+| **marked** | ^18.0.0 | Markdown rendering (agent responses) |
+| **uuid** | ^13.0.0 | ID generation |
+| **zone.js** | ~0.16.0 | Angular runtime |
+
+### Infrastructure &amp; Databases
+
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| **Docker** | Latest | Containerization |
+| **Docker Compose** | 3.9 | Local dev orchestration |
+| **Redis** | 7-alpine | Session store + DataFrame cache |
+| **SQLite** | Async (aiosqlite) | Chat history (default) |
+| **PostgreSQL** | Optional (v2) | Production DB (Cloud SQL compatible) |
+| **Snowflake** | REST API | Data warehouse + Cortex functions |
+| **BigQuery** | REST API (ADC auth) | Data warehouse |
+| **MSSQL** | SQL Server 2019+ | Relational database |
+
+---
+
+## 3. Architecture &amp; Data Flow
+
+### High-Level System Diagram
+
+```
+Angular 21 SPA (Browser)
+  │ HTTP + WebSocket (ws://)
+  ├─── POST /auth/login → JWT token
+  └─── WS /ws/chat (Bearer token)
+
+FastAPI Backend (Python 3.12)
+  │
+  ├─── API Routes
+  │     ├── /auth (JWT login, verify)
+  │     ├── /conversations (CRUD, list)
+  │     ├── /health (liveness)
+  │     └── /ws/chat (WebSocket handler)
+  │
+  └─── Orchestration Layer (chat_ws.py)
+        │
+        ├─── QueryRouter (is_data_query classifier)
+        │     ├── Rule-based pre-filter (SQL keywords, intent signals)
+        │     └── LLM classification (fallback, confidence scoring)
+        │
+        ├─── Provider Selection (LLMProviderFactory)
+        │     ├── Anthropic → tool_use agentic loop
+        │     ├── OpenAI → function_calling agentic loop
+        │     ├── Gemini → Google ADK orchestration
+        │     └── AWS Bedrock → Strands Agent loop
+        │
+        ├─── Freeform Path (non-data queries)
+        │     └── provider.stream() → tokens → WS delta frames
+        │
+        └─── Data Query Path (agentic loop)
+              │
+              ├─── SharedToolkit (singleton)
+              │     ├── Tool registration (per-provider format)
+              │     ├── Query tools:
+              │     │   ├── query_snowflake(sql, warehouse, db, schema)
+              │     │   ├── cortex_analyst(question, semantic_model_path)
+              │     │   ├── cortex_complete(prompt, model)
+              │     │   ├── cortex_summarize(text, model)
+              │     │   ├── query_bigquery(sql, project_id)
+              │     │   ├── query_mssql(sql, server, database)
+              │     │   └── combine_dataframes(df_a_key, df_b_key, join_key, how)
+              │     └── Clarification tools:
+              │         └── ask_clarification(message, candidates)
+              │
+              ├─── DataFrameStore (Redis-backed)
+              │     └── Key: "df:{user_id}:{conversation_id}:{label}"
+              │        TTL: 3600s, JSON serialization (orient='split')
+              │
+              ├─── ClarificationState (Redis)
+              │     └── Suspends loop, sends WS clarification_request
+              │        TTL: 300s, resumes on next message
+              │
+              ├─── DB Connectors (asyncio.to_thread wrapped)
+              │     ├── SnowflakeConnector (SQL + Cortex APIs)
+              │     ├── BigQueryConnector (ADC auth)
+              │     └── MSSQLConnector (pyodbc)
+              │
+              └─── ResponseFormatter
+                    └── Builds WsAgentResponse:
+                         - explanation: NL answer by provider LLM
+                         - table_md: Markdown-formatted DataFrame table
+                         - csv: Raw CSV data
+                         - sql_used: List of SQL queries executed
+                         - python_used: DataFrame combine code
+```
+
+### Request-Response Message Flow
+
+#### 1. WebSocket Connection &amp; Auth
+```
+Client → WS /ws/chat?token=&lt;jwt_token&gt;
+         │
+Backend  ├── Decode JWT token
+         ├── Create WebSocket connection
+         └── Send WsProviders frame (available LLM providers)
+```
+
+#### 2. Freeform Chat Message
+```
+Client → WsIncoming(type="message", content="Hello", model="claude-opus")
+         │
+Backend  ├── QueryRouter.is_data_query(content) → False
+         ├── LLMService.stream(messages, model, provider)
+         └── For each token:
+             └── WS frame: WsDelta(content=token)
+         └── Final: WsDone(token_count, provider, model)
+```
+
+#### 3. Data Query with Agent Loop (Agentic)
+```
+Client → WsIncoming(type="message", content="Revenue by month", model="claude-opus")
+         │
+Backend  ├── QueryRouter.is_data_query(content) → True
+         ├── Select provider (Anthropic/OpenAI/Gemini/AWS)
+         ├── provider.run_agent_loop(messages, tools, context)
+         │   │
+         │   ├─── Iteration 1: LLM + tool calls
+         │   │     ├── LLM thinks: "I need to query Snowflake for sales data"
+         │   │     ├── Tool call: query_snowflake("SELECT...", ...)
+         │   │     ├── Connector: fetch DataFrame (1000 rows)
+         │   │     ├── DataFrameStore.set("df:user1:conv1:sales_data", df_json, 3600)
+         │   │     └── Return result to LLM
+         │   │
+         │   ├─── Iteration 2: Process &amp; combine
+         │   │     ├── LLM thinks: "I need to combine with product names"
+         │   │     ├── Tool call: query_snowflake(...product_table...)
+         │   │     ├── DataFrameStore.set("df:user1:conv1:products", df_json, 3600)
+         │   │     ├── Tool call: combine_dataframes("sales_data", "products", ...)
+         │   │     └── Return combined result
+         │   │
+         │   └─── Final: LLM generates natural language explanation
+         │        &amp; references data keys for response formatting
+         │
+         └── ResponseFormatter builds WsAgentResponse:
+             ├── explanation: "Based on the data, revenue increased 23% YoY..."
+             ├── table_md: "| Month | Revenue |\n|-------|----------|\n..."
+             ├── csv: "month,revenue\njan,50000\n..."
+             ├── sql_used: ["SELECT... FROM sales", "SELECT... FROM products"]
+             └── python_used: "df.merge(sales, products, on='product_id')"
+             └── WS frame: WsAgentResponse(...)
+```
+
+#### 4. Clarification Flow
+```
+Client → WsIncoming(type="message", content="Show me data about...ambiguous query")
+         │
+Backend  ├── QueryRouter: intent score = 0.45 (below confidence threshold)
+         ├── Candidates = ["Sales Report", "Customer Analysis", "Inventory Check"]
+         ├── ClarificationState.save("clarification:user1:conv1", state)
+         ├── WS frame: WsClarificationRequest(message="...", candidates=[...])
+         └── Loop paused; waiting for user response
+         │
+Client → WsIncoming(type="message", content="Sales Report")
+         │
+Backend  ├── ClarificationState.get() → resume loop
+         ├── Route to selected intent, run agent_loop normally
+         ├── ClarificationState.delete()
+         └── Send WsAgentResponse as normal
+```
+
+### WebSocket Frame Types
+
+All frames sent/received over `/ws/chat` use Pydantic-validated schemas in `ws_messages.py`:
+
+**Incoming (Client → Backend):**
+- `WsIncoming`: type="message" (chat), type="ping" (keepalive)
+
+**Outgoing (Backend → Client):**
+- `WsDelta`: Streaming token (freeform chat)
+- `WsDone`: End of stream (token count, provider, model)
+- `WsError`: Error message + code
+- `WsPong`: Response to ping
+- `WsTitle`: Auto-generated conversation title
+- `WsProviders`: Available LLM providers on connection
+- `WsAgentProgress`: Progress during agent loop ("step 1/3: querying database...")
+- `WsClarificationRequest`: Ambiguous intent; needs user selection
+- `WsAgentResponse`: Final structured response (explanation + table + CSV + SQL)
+
+---
+
+## 4. Key Components &amp; Their Roles
+
+### Backend Core Services
+
+#### **app/core/config.py** — Settings Management
+- Pydantic `BaseSettings` with multi-level .env resolution
+- LLM provider API keys (Anthropic, OpenAI, Google, AWS)
+- Database URLs (SQLite, future PostgreSQL)
+- Redis connection + TTL config
+- DB connector credentials (Snowflake, BigQuery, MSSQL)
+- Agent limits: `MAX_TOOL_CALLS=10`, `MAX_DATAFRAME_ROWS=10000`, `DATAFRAME_TTL_SECONDS=3600`
+- CORS, WebSocket heartbeat, debug mode
+
+#### **app/core/database.py** — SQLAlchemy Async
+- AsyncSessionLocal factory (aiosqlite for SQLite, future asyncpg for PostgreSQL)
+- Base ORM class
+- `create_tables()` lifespan hook
+
+#### **app/core/security.py** — JWT Auth
+- Token generation (30-day expiry) and validation
+- `HS256` algorithm (configurable)
+
+#### **app/core/ws_manager.py** — WebSocket Connection Pooling
+- Manages active WebSocket connections per user/conversation
+- Broadcast &amp; unicast messaging
+
+#### **app/services/llm/** — Provider Abstraction
+- **base.py**: `BaseLLMProvider` ABC with `stream()` and new `run_agent_loop()` methods
+- **factory.py**: `LLMProviderFactory` discovers registered providers, filters by API key availability
+- **providers/**:
+  - `anthropic_provider.py`: Claude with tool_use multi-turn loop
+  - `openai_provider.py`: GPT with function_calling loop (preserves o1/o3 overrides)
+  - `gemini_provider.py`: **Replaced with Google ADK** (`LlmAgent`, `ParallelAgent`, `SequentialAgent`)
+  - `aws_provider.py`: Bedrock with Strands Agent dual-mode (agentic loop + streaming fallback)
+
+#### **app/models/conversation.py** — ORM Models
+- `Conversation`: id, user_id, title, created_at, updated_at, messages[]
+- `Message`: id, conversation_id, role (user/assistant), content, provider, model, token_count, created_at
+
+#### **app/schemas/** — Pydantic Validation
+- `conversation.py`: `MessageOut`, `ConversationOut`, `ConversationWithMessages`
+- `ws_messages.py`: 10+ frame types (inbound + outbound)
+
+#### **app/api/routes/chat_ws.py** — WebSocket Orchestration (478 lines)
+Key features:
+- JWT token decoding on connection
+- `QueryRouter` instance (lazy-init, per-worker)
+- Route messages: freeform → `llm_service.stream()` OR data query → `provider.run_agent_loop()`
+- `ClarificationState` check on every incoming message (resume if pending)
+- `DataFrameStore` access for tool results
+- Heartbeat ping/pong
+- Conversation persistence to SQLite
+- WebSocket disconnect handling &amp; loop cancellation
+- Error recovery with structured logging
+
+---
+
+### Agent Orchestration Layer
+
+#### **app/agent/query_router.py** — Data Query Classifier
+```python
+class QueryRouter:
+    def is_data_query(query: str) -&gt; IntentEstimationResult:
+        # Step 1: Fast keyword matching against _QUERY_SIGNALS + YAML intent keywords
+        # Step 2: LLM classification (only if inconclusive)
+        # Return: top_intent, confidence (0.0–1.0), is_ambiguous flag, candidates
+```
+
+#### **app/agent/intent_loader.py** — YAML Intent Definitions
+- Loads YAML from `config/intents/*.yaml`
+- Pydantic schema validation
+- Intent structure: name, keywords, description, example_query, tools_required
+
+#### **app/agent/dataframe_store.py** — Session DataFrame Cache
+```python
+class DataFrameStore:
+    # Redis-backed (or in-memory fallback when REDIS_ENABLED=false)
+    # Key format: "df:{user_id}:{conversation_id}:{label}"
+    # Serialization: df.to_json(orient='split') ← protects against pickle RCE
+    # TTL: 3600s (configurable DATAFRAME_TTL_SECONDS)
+    
+    async def set(key, df, ttl)    # Store DataFrame
+    async def get(key) -&gt; df       # Retrieve + check expiry
+    async def delete(key)          # Explicit cleanup
+```
+
+#### **app/agent/clarification_state.py** — Intent Ambiguity Suspension
+```python
+class ClarificationState:
+    # Redis key: "clarification:{user_id}:{conversation_id}"
+    # Value: {loop_task_id, candidates, original_query}
+    # TTL: 300s (CLARIFICATION_TTL_SECONDS)
+    # On next WS message: check → if exists, route as clarification answer
+```
+
+#### **app/agent/response_formatter.py** — Structured Response Builder
+```python
+class ResponseFormatter:
+    # Builds WsAgentResponse from:
+    # - final_explanation (LLM-generated NL text)
+    # - dataframe_labels (keys used: "sales_data", "products")
+    # - sql_queries (list of executed SQL strings)
+    # - python_code (combine_dataframes Python code)
+    
+    # Returns WsAgentResponse:
+    #   - explanation: str
+    #   - table_md: str (markdown-formatted table, limited to 100 rows display)
+    #   - csv: str (full CSV export)
+    #   - sql_used: list[str]
+    #   - python_used: str
+    #   - truncated: bool (if &gt;100 rows)
+    #   - row_count: int
+```
+
+#### **app/agent/shared_toolkit.py** — Tool Registry
+```python
+class SharedToolkit:
+    # Singleton, initialized once per startup
+    # Methods per provider format:
+    #   - for_anthropic() → {name: str, description: str, input_schema: {...}}
+    #   - for_openai() → {name: str, description: str, parameters: {...}}
+    #   - for_gemini() → google.adk.Tool objects
+    #   - for_aws() → Strands Agent tool format
+    
+    # Canonical tool names (all providers):
+    #   - query_snowflake(sql, warehouse, database, schema) → DataFrame
+    #   - cortex_analyst(question, semantic_model_path) → {sql, analysis}
+    #   - cortex_complete(prompt, model) → str
+    #   - cortex_summarize(text, model) → str
+    #   - query_bigquery(sql, project_id) → DataFrame
+    #   - query_mssql(sql, server, database) → DataFrame
+    #   - combine_dataframes(df_a_key, df_b_key, join_key, how) → DataFrame
+    #   - ask_clarification(message, candidates) → suspends loop
+```
+
+#### **app/agent/tools/** — Tool Implementations
+
+**query_tools.py:**
+- `query_snowflake()`, `query_bigquery()`, `query_mssql()` — execute SQL, return DataFrame
+- `cortex_analyst()` — Snowflake Cortex ANALYST (2-step: REST → SQL, execute)
+- `cortex_complete()`, `cortex_summarize()` — Snowflake Cortex APIs
+- `combine_dataframes()` — pandas merge with validation (handles missing keys, type mismatches)
+- Pydantic input schemas for each tool
+
+**clarification_tools.py:**
+- `ask_clarification()` — writes to ClarificationState, sends WS frame, suspends loop
+
+**combine_tools.py:**
+- DataFrame merge logic, edge case handling
+
+#### **app/agent/connectors/** — Database Adapters
+
+**base.py:**
+```python
+class BaseConnector(ABC):
+    @abstractmethod
+    async def execute_query(sql: str) -&gt; DataFrame
+    # All sync DB calls wrapped in asyncio.to_thread()
+```
+
+**snowflake_connector.py:**
+- SQL execution + Cortex ANALYST (semantic model → SQL generation)
+- Cortex COMPLETE, SUMMARIZE endpoints
+- Error handling: catches `ProgrammingError` for non-Enterprise tier
+
+**bigquery_connector.py:**
+- ADC (Application Default Credentials) auth
+- BigQuery Client (REST + gRPC)
+- Column metadata inference
+
+**mssql_connector.py:**
+- pyodbc ODBC Driver 18
+- Connection string building
+- Sync wrapper: `asyncio.to_thread()`
+
+---
+
+### Frontend (Angular 21)
+
+#### **Core Services (app/core/services/)**
+
+**auth.service.ts:**
+- Login (POST /auth/login with email/password)
+- Token storage (localStorage)
+- Token refresh on app init
+- Logout
+
+**chat-ws.service.ts:**
+- WebSocket connection (ws:// auto-resolved from window.location)
+- Frame handling: delta → stream to Observable, done → complete, error → error
+- **New: agent_response frame** → explanation bubble + table markdown + CSV download + SQL/Python collapsible blocks
+
+**conversation.service.ts:**
+- CRUD operations: create, list, get by ID, update title, delete
+- HTTP client integration
+
+**providers.service.ts:**
+- Fetch available LLM providers on app init
+- Update when new provider added
+
+**theme.service.ts:**
+- Dark/light mode toggle
+
+#### **Features (app/features/)**
+
+**chat/** (Chat window + input):
+- `chat-window.component.ts`: Message list (infinite scroll, markdown rendering)
+- `chat-input.component.ts`: Input field, model selector, submit button
+- Streaming animation: animated cursor, delta tokens append
+
+**sidebar/** (Conversation list):
+- `sidebar.component.ts`: List conversations, new chat button, delete conversation
+
+#### **Shared Components (app/shared/)**
+
+**components/**:
+- `message-bubble.component.ts`: User/assistant message rendering, markdown → HTML
+
+**models/**:
+- `chat.models.ts`: TypeScript interfaces
+  - `Message` (id, role, content, provider, model, timestamp)
+  - `Conversation` (id, title, created_at, messages[])
+  - `AgentResponseFrame` (explanation, table_md, csv, sql_used, python_used)
+  - `ClarificationRequestFrame` (message, candidates)
+
+---
+
+## 5. Database Schema
+
+### SQLite (default; async)
+
+**conversations** table:
+```sql
+CREATE TABLE conversations (
+    id VARCHAR PRIMARY KEY,
+    user_id VARCHAR NOT NULL,
+    title VARCHAR DEFAULT 'New Chat',
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    INDEX user_id
+);
+```
+
+**messages** table:
+```sql
+CREATE TABLE messages (
+    id VARCHAR PRIMARY KEY,
+    conversation_id VARCHAR NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    role VARCHAR NOT NULL,  -- 'user' or 'assistant'
+    content TEXT NOT NULL,
+    provider VARCHAR,       -- 'anthropic', 'openai', 'gemini', 'aws'
+    model VARCHAR,          -- 'claude-opus', 'gpt-4', etc.
+    token_count INTEGER DEFAULT 0,
+    created_at DATETIME NOT NULL,
+    INDEX conversation_id
+);
+```
+
+### Redis (session state)
+
+**DataFrames:**
+```
+Key:   "df:{user_id}:{conversation_id}:{label}"
+Value: JSON string (orient='split')
+TTL:   3600s
+```
+
+**Clarification state:**
+```
+Key:   "clarification:{user_id}:{conversation_id}"
+Value: {loop_task_id: str, candidates: list, original_query: str}
+TTL:   300s
+```
+
+---
+
+## 6. Configuration &amp; Environment Variables
+
+**chatbot/.env** (from env.template):
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `ANTHROPIC_API_KEY` | At least 1 | "" | Claude API key |
+| `OPENAI_API_KEY` | At least 1 | "" | GPT API key |
+| `GOOGLE_API_KEY` | At least 1 | "" | Gemini API key |
+| `AWS_ACCESS_KEY_ID` | Optional | "" | AWS credentials (or IAM role) |
+| `AWS_SECRET_ACCESS_KEY` | Optional | "" | AWS credentials |
+| `AWS_REGION` | No | "us-east-1" | AWS Bedrock region |
+| `SECRET_KEY` | Yes | dev-placeholder | JWT signing secret (32 bytes) |
+| `LLM_PROVIDER` | No | auto | Default provider (fallback: first available) |
+| `DATABASE_URL` | No | SQLite @ ./data/chatbot.db | SQLAlchemy async URL |
+| `REDIS_ENABLED` | No | false | Enable Redis (default: in-memory) |
+| `REDIS_URL` | No | redis://localhost:6379/0 | Redis connection |
+| `SNOWFLAKE_ACCOUNT` | Optional | "" | Snowflake account ID |
+| `SNOWFLAKE_USER` | Optional | "" | Snowflake user |
+| `SNOWFLAKE_PASSWORD` | Optional | "" | Snowflake password |
+| `SNOWFLAKE_WAREHOUSE` | Optional | "COMPUTE_WH" | Warehouse name |
+| `SNOWFLAKE_DATABASE` | Optional | "" | Database name |
+| `SNOWFLAKE_SCHEMA` | Optional | "PUBLIC" | Schema name |
+| `SNOWFLAKE_ROLE` | Optional | "" | Role name |
+| `BIGQUERY_PROJECT_ID` | Optional | "" | GCP project ID |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Optional | "" | Path to service account JSON |
+| `MSSQL_SERVER` | Optional | "" | SQL Server host |
+| `MSSQL_DATABASE` | Optional | "" | Database name |
+| `MSSQL_USERNAME` | Optional | "" | Username |
+| `MSSQL_PASSWORD` | Optional | "" | Password |
+| `MSSQL_DRIVER` | No | "ODBC Driver 18 for SQL Server" | ODBC driver name |
+| `CORS_ORIGIN` | No | http://localhost:4200 | CORS allowed origin |
+| `WS_HEARTBEAT_INTERVAL` | No | 25 | Ping interval (seconds) |
+| `APP_VERSION` | No | "1.0.0" | Version string |
+| `DEBUG` | No | false | Enable /docs, verbose logs |
+| `INTENT_DIR` | No | ./config/intents | YAML intent path |
+| `PROMPT_DIR` | No | ./config/prompts | Prompt template path |
+| `MAX_DATAFRAME_ROWS` | No | 10000 | DataFrame row limit |
+| `MAX_TOOL_CALLS` | No | 10 | Agent loop iteration cap |
+| `DATAFRAME_TTL_SECONDS` | No | 3600 | DataFrame cache TTL |
+| `CLARIFICATION_TTL_SECONDS` | No | 300 | Clarification state timeout |
+
+---
+
+## 7. Deployment
+
+### Local Development (no Docker)
+```bash
+cd chatbot/backend
+python -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+cp ../env.template ../.env  # edit .env
+./start.sh
+# OR: uvicorn app.main:app --reload --port 8000
+
+cd ../frontend
+npm install &amp;&amp; npm start
+# Frontend: http://localhost:4200
+# Backend: http://localhost:8000
+```
+
+### Docker Compose (local)
+```bash
+cd chatbot
+cp env.template .env  # edit .env
+docker compose up --build
+# Frontend: http://localhost:4200
+# Backend docs: http://localhost:8000/docs (DEBUG=true only)
+```
+
+### GCP Cloud Run
+- Step 1: Create Artifact Registry, enable APIs
+- Step 2: Store secrets in Secret Manager (ANTHROPIC_API_KEY, etc.)
+- Step 3: Build &amp; push backend Docker image
+- Step 4: Deploy backend to Cloud Run (set env vars + secrets)
+- Step 5: Deploy frontend to Cloud Run (set BACKEND_URL)
+- Step 6: Update backend CORS to frontend URL
+- Optional: Cloud SQL for persistent PostgreSQL database
+
+See README.md § "Deploy to GCP (Cloud Run)" for full commands.
+
+---
+
+## 8. Testing
+
+**Backend (pytest):**
+```bash
+cd chatbot/backend
+source .venv/bin/activate
+pytest                        # All tests
+pytest --cov=app              # With coverage
+pytest -k test_agent_loop     # Single test file
+```
+
+**Frontend (ng test):**
+```bash
+cd chatbot/frontend
+ng test                       # Watch mode
+ng test --no-watch --code-coverage
+```
+
+**Test files** in `backend/tests/`:
+- `conftest.py`: Fixtures (AsyncSession, mock Redis, DataFrameStore)
+- `test_agent_loop.py`: Provider agent loop correctness
+- `test_clarification_flow.py`: Ambiguity → question → resume
+- `test_combine_tools.py`: DataFrame merge edge cases
+- `test_intent_clarification_integration.py`: End-to-end intent + clarification
+- `test_intent_loader.py`: YAML parsing &amp; validation
+- `test_query_router.py`: Data query classification
+
+---
+
+## 9. Documentation Files (Complete List)
+
+### Root-Level Documentation
+- **README.md** (8.6 KB): User-facing getting started, quick start (local + Docker), configuration table, GCP Cloud Run deployment, feature overview
+- **CLAUDE.md** (8.9 KB): Developer workflow, tech stack summary, code conventions, task management, git workflow, self-improvement loop
+- **blackbox/session-log.md**: Append-only audit of file changes per session (git snapshots)
+- **blackbox/audit.md**: Raw user prompts (prompt audit log)
+
+### Project Planning &amp; Architecture
+- **chatbot/docs/plans/2026-04-19-agentic-data-chatbot.md** (11 KB): Approved MVP plan with:
+  - Architecture diagram (provider orchestration)
+  - File changes table (all new + modified files)
+  - MVP scope (included vs. deferred)
+  - Known risks &amp; edge cases (A1–A6, Q1–Q6, T1–T4, P1–PR4)
+  - Implementation notes (Dockerfile ODBC order, Redis key format, GeminiProvider name constraint, QueryRouter strategy)
+  - Implementation order (4 phases)
+  - Mutations log (changelog)
+
+### MCP Server Registry
+- **.mcp.json** (5.5 KB): 20+ MCP server configurations
+  - GitHub Copilot API
+  - Angular CLI
+  - Chrome DevTools
+  - Browser Use
+  - Firebase
+  - Context7 (documentation)
+  - Dart MCP
+  - LangChain Docs
+  - PostgreSQL
+  - Docker
+  - Xcode
+  - Maestro (mobile testing)
+  - ADK Docs (Google Agent Development Kit)
+  - Weaviate Docs
+  - Stripe, RevenueCat, Voice Mode
+
+### Claude Code Agents &amp; Skills (.claude/)
+- **80+ Skills** (agentic-ai-dev, angular-spa, python-dev, database-designer, vector-database, etc.)
+- **60+ Agent definitions** (code-reviewer, agentic-ai-reviewer, frontend-design, etc.)
+- **Rules** (core-behaviors, verification-and-reporting, code-standards, leverage-patterns)
+- **Commands** (slash command handlers)
+- **Hooks** (pre-commit, workflow automation)
+
+---
+
+## 10. Key Architectural Decisions
+
+### Provider Abstraction
+- Each LLM provider (Anthropic, OpenAI, Gemini, AWS) is a pluggable implementation of `BaseLLMProvider`
+- `LLMProviderFactory` auto-discovers providers with configured API keys
+- **Per-provider agent loops:** Each uses its native orchestration pattern (tool_use, function_calling, ADK, Strands Agent)
+
+### Agentic Routing
+- **QueryRouter** pre-filters with keywords, fallback to LLM classification
+- **Data queries** route to provider-specific agent loop (not streaming)
+- **Freeform queries** use simple streaming (`stream()` method)
+- **Ambiguous queries** pause and request clarification via WS frame
+
+### DataFrame Management
+- Redis-backed store (with in-memory fallback) per session
+- JSON serialization (`orient='split'`) protects against pickle RCE
+- TTL-based auto-cleanup (3600s default)
+- Scoped per `{user_id}:{conversation_id}:{label}` to prevent cross-conversation leakage
+
+### Database Connectors
+- Synchronous APIs wrapped in `asyncio.to_thread()` for async compatibility
+- Snowflake: SQL + Cortex ANALYST (2-step) + COMPLETE/SUMMARIZE
+- BigQuery: ADC auth (no explicit key needed if mount ~/.config/gcloud)
+- MSSQL: pyodbc ODBC Driver 18 (Dockerfile install order matters)
+
+### Frontend Complexity
+- Angular Signals + RxJS (no NgRx)
+- Markdown rendering for agent responses (marked library)
+- Auto-resolving WebSocket URL from window.location (works in Docker + Cloud Run without rebuild)
+
+---
+
+## 11. Known Limitations &amp; Future Work
+
+### Deferred to v2 (per plan)
+- PostgreSQL connector
+- MySQL connector
+- Snowflake Cortex Search
+- Snowflake Cortex Agents REST API
+- Redis DataFrameStore multi-worker scaling
+
+### Edge Cases &amp; Risks (from plan, pre-mitigation)
+- A1: `GeminiProvider` class name must match factory import
+- A2: `run_agent_loop()` uses default `raise NotImplementedError` (non-abstract) during transition
+- A3: Clarification flow requires WS multi-turn suspension (Redis-backed state)
+- Q1: DB connectors are sync; wrapped in `asyncio.to_thread()`
+- Q2: Redis serialization → use JSON (not pickle) to prevent RCE
+- PR1: Snowflake Enterprise tier required for Cortex ANALYST (error handling in connector)
+- PR2: ODBC Driver 18 must install before pip (Dockerfile order)
+
+---
+
+## Summary
+
+The **Database Agent Chatbot** is a sophisticated, production-ready system that combines:
+1. **Multi-provider LLM orchestration** with provider-native agent loops
+2. **Agentic data querying** with intent classification, clarification flows, and DataFrame management
+3. **Real-time streaming** via WebSocket with structured response frames
+4. **Enterprise database support** (Snowflake, BigQuery, MSSQL) with async-safe connectors
+5. **Modern frontend** (Angular 21) with markdown rendering and responsive chat UX
+6. **Docker-native local dev** (Docker Compose) + GCP Cloud Run deployment
+
+The MVP scope is well-defined, risks are catalogued with mitigations, and the implementation is methodically planned across 4 phases. All code adheres to structured logging, async safety, and security best practices (JWT, secret redaction, Redis JSON serialization).</result>
+<usage><total_tokens>81920</total_tokens><tool_uses>88</tool_uses><duration_ms>310964</duration_ms></usage>
+</task-notification>
+---

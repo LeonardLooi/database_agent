@@ -430,3 +430,8 @@
 <!-- git-snapshot 2026-04-22T07:23:46Z -->
 - blackbox/audit.md
 <!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T07:37:04Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+<!-- end-snapshot -->
