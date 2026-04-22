@@ -18,9 +18,11 @@ A production-grade, full-stack AI chatbot with an **agentic data query engine**.
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [Agentic Data Query Flow](#agentic-data-query-flow)
+- [YAML Skill System](#yaml-skill-system)
+- [Sessions API](#sessions-api)
 - [WebSocket Protocol](#websocket-protocol)
 - [Database Connectors](#database-connectors)
-- [Deploy to GCP Cloud Run](#deploy-to-gcp-cloud-run)
+- [Production Deployment (Docker)](#production-deployment-docker)
 - [Testing](#testing)
 - [Contributing](#contributing)
 
@@ -40,6 +42,8 @@ A production-grade, full-stack AI chatbot with an **agentic data query engine**.
 | **DataFrame session cache** | Redis-backed (in-memory fallback) session store for intermediate query results; TTL-scoped per conversation |
 | **JWT authentication** | 30-day token expiry, bearer-token WebSocket auth |
 | **Persistent history** | Conversations and messages stored in SQLite (swappable to PostgreSQL via env var) |
+| **YAML skill system** | Extensible skill registry loads `*.yaml` files at startup; `ChatOrchestrator` routes messages to skills before falling back to the database agent or freeform chat; hot-reload via watchdog in dev mode |
+| **Per-session model switching** | `PATCH /api/sessions/{id}/model` persists the active model per conversation (Redis-backed, 24-hour TTL, in-memory fallback) |
 | **Docker-native** | Single `docker compose up --build` for full local environment |
 | **GCP Cloud Run ready** | Backend and frontend each ship as a Docker image; Cloud SQL optional for persistent storage |
 
@@ -67,10 +71,16 @@ A production-grade, full-stack AI chatbot with an **agentic data query engine**.
 │  └──────────────┘  └──────────────────┘  └──────────┬───────────┘  │
 │                                                      │              │
 │  ┌───────────────────────────────────────────────────▼───────────┐ │
-│  │                      QueryRouter                              │ │
-│  │  keyword pre-filter → LLM classification (confidence score)  │ │
-│  └──────────────────┬─────────────────────────┬─────────────────┘ │
-│                     │ data query              │ freeform           │
+│  │                    ChatOrchestrator                           │ │
+│  │  SkillRegistry (YAML) → LLM skill-match → confidence gate    │ │
+│  │  CALL_SKILL ≥0.85  ·  CLARIFY 0.50–0.85  ·  GENERIC_ANSWER  │ │
+│  └──┬──────────────────────────────────────────────┬────────────┘ │
+│     │ skill matched                                 │ no match     │
+│  ┌──▼──────────────┐  ┌────────────────────────────▼───────────┐  │
+│  │SkillPromptBuild.│  │            QueryRouter                 │  │
+│  │ YAML→LLM prompt │  │ keyword pre-filter → LLM classify      │  │
+│  └─────────────────┘  └──────────────┬─────────────┬──────────┘  │
+│                                       │ data query  │ freeform    │
 │  ┌──────────────────▼──────────────┐  ┌──────▼──────────────────┐ │
 │  │    Provider Agent Loop          │  │   LLMService.stream()   │ │
 │  │  ┌────────────────────────────┐ │  │   Token delta frames    │ │
@@ -119,13 +129,19 @@ database_agent/
 │   │   │   ├── agent/            # Agentic orchestration layer
 │   │   │   │   ├── connectors/   # Snowflake, BigQuery, MSSQL adapters
 │   │   │   │   ├── tools/        # query_tools, clarification_tools, combine_tools
+│   │   │   │   ├── orchestrator.py        # ChatOrchestrator (skill → DB agent → chat)
+│   │   │   │   ├── routing.py             # Per-provider confidence extraction
+│   │   │   │   ├── skill_registry.py      # YAML skill loader with hot-reload
+│   │   │   │   ├── skill_prompt_builder.py  # YAML → LLM prompt assembly
+│   │   │   │   ├── session_model_store.py   # Per-conversation model preference
 │   │   │   │   ├── dataframe_store.py
 │   │   │   │   ├── clarification_state.py
 │   │   │   │   ├── intent_loader.py
 │   │   │   │   ├── query_router.py
 │   │   │   │   ├── response_formatter.py
 │   │   │   │   └── shared_toolkit.py
-│   │   │   ├── api/routes/       # auth, chat_ws, conversations, health
+│   │   │   ├── skills/           # YAML skill definitions (*.yaml, hot-reloaded)
+│   │   │   ├── api/routes/       # auth, chat_ws, conversations, sessions, health
 │   │   │   ├── core/             # config, database, security, ws_manager
 │   │   │   ├── models/           # SQLAlchemy ORM (Conversation, Message)
 │   │   │   ├── schemas/          # Pydantic v2 schemas (ws_messages, conversation)
@@ -232,16 +248,55 @@ Copy `chatbot/env.template` to `chatbot/.env`. At minimum, set `SECRET_KEY` and 
 
 ### LLM Provider Keys
 
-Providers without a configured key (or valid AWS credentials) are automatically hidden in the model selector.
+Providers without configured credentials are automatically hidden in the model selector.
 
 | Variable | Provider | Notes |
 |----------|----------|-------|
 | `ANTHROPIC_API_KEY` | Claude (Anthropic) | `sk-ant-...` |
 | `OPENAI_API_KEY` | GPT (OpenAI) | `sk-...` |
-| `GOOGLE_API_KEY` | Gemini (Google ADK) | From Google AI Studio |
 | `AWS_ACCESS_KEY_ID` | Bedrock (AWS) | Or use IAM role / `~/.aws/credentials` |
 | `AWS_SECRET_ACCESS_KEY` | Bedrock (AWS) | — |
 | `AWS_REGION` | Bedrock region | `us-east-1` |
+
+### GCP / Gemini Authentication (ADC — no API key)
+
+Gemini uses Application Default Credentials (ADC), not a Google AI Studio API key.
+Three auth paths are tried in priority order:
+
+**Priority 1 — Impersonation (production recommended)**
+
+```bash
+# Set in .env or as a system environment variable:
+GCP_IMPERSONATE_SA=shared-sa@your-project.iam.gserviceaccount.com
+```
+
+The caller's ambient identity (Cloud Run SA, Workload Identity, or local gcloud)
+impersonates the shared service account. The caller must have
+`roles/iam.serviceAccountTokenCreator` on `GCP_IMPERSONATE_SA`.
+
+No key file is needed. Combine with local gcloud for developer machines:
+
+```bash
+gcloud auth application-default login
+```
+
+**Priority 2 — Service account key file (local dev fallback)**
+
+```bash
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
+# Docker: mount the file and set the path inside the container.
+```
+
+**Priority 3 — Ambient ADC (last resort — logs a WARNING)**
+
+```bash
+gcloud auth application-default login
+# No env var required. Identity is whatever gcloud resolved.
+# WARNING: the identity may not be the intended shared SA.
+```
+
+If all three paths fail, the backend raises `AuthConfigError` at startup with an
+actionable remediation message in the logs.
 
 ### Redis (Session State)
 
@@ -262,6 +317,7 @@ Redis is optional. When disabled, DataFrameStore uses an in-process dict (single
 | `MAX_DATAFRAME_ROWS` | Max rows fetched per DB query | `10000` |
 | `INTENT_DIR` | Path to YAML intent definitions | `./config/intents` |
 | `PROMPT_DIR` | Path to Markdown prompt templates | `./config/prompts` |
+| `SKILLS_DIR` | Path to YAML skill definitions loaded by `SkillRegistry` | `./app/skills` |
 
 ### Database Connectors
 
@@ -344,6 +400,81 @@ Ambiguous message → QueryRouter (confidence=0.45, candidates=["Sales","Invento
 
 ---
 
+## YAML Skill System
+
+The `ChatOrchestrator` sits in front of every WebSocket message. Before falling back to the database agent or freeform chat, it tries to match the user message against all loaded skills using the active LLM provider.
+
+### Routing decision tree
+
+```
+User message
+  → ChatOrchestrator._match_skill()  (LLM rates confidence 0.0–1.0)
+      ├─ confidence ≥ 0.85  → CALL_SKILL: execute skill, return SkillResult
+      ├─ confidence 0.50–0.84 → CLARIFY: ask user to confirm intent
+      └─ confidence < 0.50  → GENERIC_ANSWER:
+              ├─ QueryRouter says data query → Provider agent loop (DB tools)
+              └─ otherwise → LLMService.stream() (freeform)
+```
+
+### Adding a skill
+
+Drop a YAML file into `chatbot/backend/app/skills/`. It is hot-reloaded at runtime (watchdog must be installed):
+
+```yaml
+name: my_skill
+description: >
+  One sentence describing what this skill does — the LLM reads this to decide whether to route here.
+instructions: |
+  You are an expert at… (full system prompt for the skill executor)
+parameters:
+  input_text:
+    type: string
+    required: true
+    description: The text to process
+output_format: |
+  {"result": "...", "confidence": 0.0}
+tags: [analysis, text]
+```
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `name` | Yes | Unique skill identifier (used in logs and routing) |
+| `description` | Yes | One sentence read by the LLM skill-matcher |
+| `instructions` | Yes | Full system prompt executed by the active provider |
+| `parameters` | No | Named inputs extracted from the user message |
+| `output_format` | No | JSON schema the LLM must follow in its response |
+| `tags` | No | Reserved for future tag-based pre-filtering (>30 skills) |
+
+### Confidence signals by provider
+
+| Provider | Signal | Optional enhancement |
+|----------|--------|---------------------|
+| Anthropic | Self-reported float in JSON | Follow-up self-eval prompt (`ENABLE_ANTHROPIC_SELF_EVAL=true`) |
+| OpenAI | Self-reported float in JSON | logprobs averaging (`ENABLE_LOGPROB_CONFIDENCE=true`) |
+| Gemini | Self-reported float, or keyword-overlap heuristic (fallback when 0.0) | — |
+
+---
+
+## Sessions API
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `PATCH /api/sessions/{session_id}/model` | Bearer JWT (query param `?token=`) | Switch the active model mid-conversation without losing history |
+
+**Request body:**
+```json
+{ "model": "claude-opus-4-7" }
+```
+
+**Response:**
+```json
+{ "model": "claude-opus-4-7", "provider": "anthropic", "session_id": "..." }
+```
+
+The preference is persisted in Redis (or in-process dict) with a 24-hour TTL.
+
+---
+
 ## WebSocket Protocol
 
 All communication with `/ws/chat` uses JSON frames validated by Pydantic schemas.
@@ -398,127 +529,161 @@ All connectors wrap synchronous client libraries in `asyncio.to_thread()` for no
 
 ---
 
-## Deploy to GCP Cloud Run
+## Production Deployment (Docker)
 
-### 1 — One-time setup
+The stack is fully containerised and runs on any host that supports Docker Compose v2 — VPS, bare metal, AWS EC2, DigitalOcean, Azure VM, etc. nginx is the single public entry point; backend and frontend are never exposed directly.
 
-```bash
-export PROJECT_ID=YOUR_PROJECT_ID
-export REGION=asia-southeast1        # change to your region
-export REPO=chatbot
-
-gcloud config set project $PROJECT_ID
-
-gcloud services enable \
-  run.googleapis.com \
-  artifactregistry.googleapis.com \
-  secretmanager.googleapis.com
-
-gcloud artifacts repositories create $REPO \
-  --repository-format=docker \
-  --location=$REGION
-
-gcloud auth configure-docker ${REGION}-docker.pkg.dev
+```
+nginx (port 80/443) ─── frontend (port 80, internal)
+                    └── backend  (port 8000, internal)
+                              └── redis (port 6379, internal)
+                              └── sqlite_data / postgres (volume)
 ```
 
-### 2 — Store secrets in Secret Manager
+### 1 — Prepare the server
+
+Install Docker Engine and Compose v2 on your host:
 
 ```bash
-echo -n "your-anthropic-key"         | gcloud secrets create ANTHROPIC_API_KEY --data-file=-
-echo -n "your-openai-key"            | gcloud secrets create OPENAI_API_KEY    --data-file=-
-echo -n "your-google-key"            | gcloud secrets create GOOGLE_API_KEY    --data-file=-
-echo -n "$(openssl rand -hex 32)"    | gcloud secrets create SECRET_KEY        --data-file=-
+# Ubuntu / Debian
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER   # log out and back in
+docker compose version           # should print v2.x
 ```
 
-Leave any key empty (`echo -n ""`) if you don't use that provider — it won't appear in the UI.
-
-### 3 — Build and deploy the backend
+Clone the repo and enter the chatbot directory:
 
 ```bash
-cd chatbot/backend
-
-docker build --platform linux/amd64 \
-  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/backend:latest .
-docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/backend:latest
-
-gcloud run deploy backend \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/backend:latest \
-  --region=$REGION \
-  --platform=managed \
-  --allow-unauthenticated \
-  --port=8000 \
-  --timeout=3600 \
-  --concurrency=80 \
-  --set-secrets="ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GOOGLE_API_KEY=GOOGLE_API_KEY:latest,SECRET_KEY=SECRET_KEY:latest" \
-  --set-env-vars="REDIS_ENABLED=false,CORS_ORIGIN=https://PLACEHOLDER"
-
-BACKEND_URL=$(gcloud run services describe backend \
-  --region=$REGION --format='value(status.url)')
-echo "Backend URL: $BACKEND_URL"
+git clone <your-repo-url>
+cd database_agent/chatbot
 ```
 
-### 4 — Build and deploy the frontend
+### 2 — Configure environment
 
 ```bash
-cd chatbot/frontend
-
-docker build --platform linux/amd64 \
-  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/frontend:latest .
-docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/frontend:latest
-
-gcloud run deploy frontend \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/frontend:latest \
-  --region=$REGION \
-  --platform=managed \
-  --allow-unauthenticated \
-  --port=80 \
-  --set-env-vars="BACKEND_URL=${BACKEND_URL}"
-
-FRONTEND_URL=$(gcloud run services describe frontend \
-  --region=$REGION --format='value(status.url)')
-echo "Frontend URL: $FRONTEND_URL"
+cp env.template .env
 ```
 
-### 5 — Update backend CORS
+Edit `.env`. Minimum required values:
 
 ```bash
-gcloud run services update backend \
-  --region=$REGION \
-  --update-env-vars="CORS_ORIGIN=${FRONTEND_URL}"
+SECRET_KEY=$(openssl rand -hex 32)   # paste the output into .env
+ANTHROPIC_API_KEY=sk-ant-...         # at least one LLM key required
+CORS_ORIGIN=https://your-domain.com  # must match the public URL
+REDIS_ENABLED=true                   # enable for production (multi-worker safe)
+REDIS_URL=redis://redis:6379/0       # matches the redis service in docker-compose.yml
 ```
 
-### 6 — Persistent database (optional but recommended)
+Never commit `.env` — it contains secrets.
 
-Cloud Run is stateless — SQLite data is lost on every redeploy. Use Cloud SQL for production:
+### 3 — Build and start
 
 ```bash
-gcloud sql instances create chatbot-db \
-  --database-version=POSTGRES_15 \
-  --region=$REGION \
-  --tier=db-f1-micro
-
-gcloud sql databases create chatbot --instance=chatbot-db
-gcloud sql users create chatbot --instance=chatbot-db --password=YOUR_DB_PASSWORD
+docker compose up --build -d
 ```
 
-Redeploy the backend with:
+This builds all images locally and starts four services: `redis`, `backend`, `frontend`, `nginx`. nginx listens on port 80. Check that everything is healthy:
 
 ```bash
---add-cloudsql-instances=${PROJECT_ID}:${REGION}:chatbot-db \
---set-env-vars="DATABASE_URL=postgresql+asyncpg://chatbot:PASSWORD@/chatbot?host=/cloudsql/${PROJECT_ID}:${REGION}:chatbot-db"
+docker compose ps
+docker compose logs backend --tail 50
+curl http://localhost/health          # should return {"status":"ok",...}
 ```
 
-Add `asyncpg` to `requirements.txt` before rebuilding.
+### 4 — HTTPS with a reverse proxy (recommended)
+
+Run nginx or Caddy on the host as a TLS terminator in front of the Compose stack:
+
+**Option A — Caddy (simplest, auto-HTTPS)**
+
+Install Caddy on the host, then create `/etc/caddy/Caddyfile`:
+
+```
+your-domain.com {
+    reverse_proxy localhost:80
+}
+```
+
+```bash
+sudo systemctl reload caddy
+```
+
+Caddy automatically obtains and renews a Let's Encrypt certificate.
+
+**Option B — nginx on the host**
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+    location / {
+        proxy_pass          http://localhost:80;
+        proxy_http_version  1.1;
+        proxy_set_header    Upgrade $http_upgrade;
+        proxy_set_header    Connection "upgrade";
+        proxy_set_header    Host $host;
+        proxy_read_timeout  3600s;   # required for long-lived WebSocket connections
+    }
+}
+```
+
+Use `certbot --nginx -d your-domain.com` to obtain the certificate.
+
+After adding TLS, update `CORS_ORIGIN` in `.env` to the `https://` URL and restart:
+
+```bash
+docker compose up -d --no-build
+```
+
+### 5 — Persistent database (PostgreSQL)
+
+SQLite is fine for a single host. For multiple replicas or managed backup, switch to PostgreSQL:
+
+```bash
+# On the host (or use a managed DB service)
+docker run -d \
+  --name chatbot-postgres \
+  -e POSTGRES_DB=chatbot \
+  -e POSTGRES_USER=chatbot \
+  -e POSTGRES_PASSWORD=YOUR_DB_PASSWORD \
+  -v pg_data:/var/lib/postgresql/data \
+  -p 5432:5432 \
+  postgres:15-alpine
+```
+
+Then set in `.env`:
+
+```bash
+DATABASE_URL=postgresql+asyncpg://chatbot:YOUR_DB_PASSWORD@host.docker.internal:5432/chatbot
+```
+
+Add `asyncpg` to `chatbot/backend/requirements.txt` before rebuilding. Run Alembic migrations on first deploy:
+
+```bash
+docker compose run --rm backend alembic upgrade head
+```
+
+### 6 — Updating the deployment
+
+```bash
+git pull
+docker compose up --build -d   # rebuilds changed images, replaces containers
+docker compose image prune -f  # remove dangling old images
+```
 
 ### Environment routing reference
 
-| Mode | Angular env | WebSocket target | Backend |
-|------|------------|-----------------|---------|
-| `npm start` (local) | `environment.ts` | `ws://localhost:4200` via `proxy.conf.json` | `localhost:8000` |
-| Docker Compose | `environment.prod.ts` | `ws://localhost:4200` via nginx | `http://backend:8000` |
-| Cloud Run | `environment.prod.ts` | `wss://frontend-url` via nginx | `https://backend-xxx.run.app` |
+| Mode | Entry point | WebSocket URL resolved from | Backend |
+|------|------------|----------------------------|---------|
+| `npm start` (local dev) | `localhost:4200` | `proxy.conf.json` → `localhost:8000` | direct |
+| Docker Compose (HTTP) | `localhost:80` via nginx | `window.location` → `ws://localhost` | `http://backend:8000` (internal) |
+| Docker Compose + TLS | `your-domain.com:443` via host proxy | `window.location` → `wss://your-domain.com` | `http://backend:8000` (internal) |
 
-The frontend auto-resolves the WebSocket URL from `window.location` so the same Docker image works in all three environments without rebuilding.
+The frontend resolves the WebSocket URL from `window.location` at runtime — the same Docker image works in all three modes without rebuilding.
 
 ---
 
@@ -542,11 +707,19 @@ ng test --no-watch --code-coverage  # single run with coverage
 | Test file | What it covers |
 |-----------|---------------|
 | `test_agent_loop.py` | Provider-specific agent loop correctness |
+| `test_auth.py` | JWT login, token validation, expiry |
 | `test_clarification_flow.py` | Ambiguous query → WS request → resume |
 | `test_combine_tools.py` | DataFrame merge edge cases |
+| `test_integration.py` | End-to-end WebSocket message flow |
 | `test_intent_clarification_integration.py` | End-to-end intent + clarification |
 | `test_intent_loader.py` | YAML intent parsing and validation |
+| `test_orchestrator.py` | ChatOrchestrator skill-match, confidence routing, CALL_SKILL/CLARIFY/GENERIC paths |
+| `test_providers.py` | LLM provider adapters (Anthropic, OpenAI, Gemini) |
 | `test_query_router.py` | Data query classification (keyword + LLM) |
+| `test_routing.py` | Per-provider confidence extraction (enhance_gemini, enhance_openai, enhance_anthropic) |
+| `test_session_model.py` | SessionModelStore get/set with in-memory and Redis backends |
+| `test_skill_registry.py` | SkillRegistry load, validation, reload |
+| `test_stress.py` | Concurrent WebSocket connection handling |
 
 ---
 

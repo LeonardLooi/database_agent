@@ -11,12 +11,14 @@ This document describes the system architecture, component responsibilities, dat
 - [Backend Architecture](#backend-architecture)
   - [API Layer](#api-layer)
   - [LLM Provider Abstraction](#llm-provider-abstraction)
+  - [ChatOrchestrator and Skill System](#chatorchestrator-and-skill-system)
   - [Agentic Orchestration Layer](#agentic-orchestration-layer)
   - [Database Connectors](#database-connectors)
   - [Session State (Redis)](#session-state-redis)
   - [Persistence (SQLite / PostgreSQL)](#persistence-sqlite--postgresql)
 - [Frontend Architecture](#frontend-architecture)
 - [Data Flows](#data-flows)
+  - [Skill Execution](#skill-execution)
   - [Freeform Chat](#freeform-chat)
   - [Data Query (Agent Loop)](#data-query-agent-loop)
   - [Clarification Flow](#clarification-flow)
@@ -42,6 +44,11 @@ graph TB
         WS["/ws/chat<br/>WebSocket handler"]
         Auth["/auth<br/>JWT login"]
         Conv["/conversations<br/>CRUD"]
+        Sess["/api/sessions<br/>model switch"]
+        Orch[ChatOrchestrator]
+        SR[SkillRegistry<br/>YAML hot-reload]
+        SPB[SkillPromptBuilder]
+        SMS[SessionModelStore<br/>Redis / in-memory]
         QR[QueryRouter]
         LLM[LLMService]
         Loop[Provider Agent Loop]
@@ -72,7 +79,14 @@ graph TB
     UI -- "HTTP + WebSocket (JWT)" --> WS
     UI -- "HTTP" --> Auth
     UI -- "HTTP" --> Conv
-    WS --> QR
+    UI -- "HTTP PATCH" --> Sess
+    Sess --> SMS
+    SMS --> Redis
+    WS --> Orch
+    Orch --> SR
+    Orch -- "CALL_SKILL" --> SPB
+    SPB --> LLM
+    Orch -- "GENERIC_ANSWER" --> QR
     QR -- freeform --> LLM
     QR -- data query --> Loop
     Loop --> ST
@@ -104,12 +118,14 @@ backend/app/
 ├── main.py                     # FastAPI app — lifespan, CORS, router registration
 ├── api/routes/
 │   ├── auth.py                 # POST /auth/login, GET /auth/verify
-│   ├── chat_ws.py              # WS /ws/chat — orchestration hub (478 lines)
+│   ├── chat_ws.py              # WS /ws/chat — orchestration hub
 │   ├── conversations.py        # CRUD /conversations, /conversations/{id}/messages
+│   ├── sessions.py             # PATCH /api/sessions/{id}/model — model switching
 │   └── health.py               # GET /health
 ├── core/
 │   ├── config.py               # Pydantic BaseSettings — all env vars
 │   ├── database.py             # AsyncSessionLocal, Base, create_tables()
+│   ├── exceptions.py           # Domain exception types (AuthConfigError, etc.)
 │   ├── security.py             # JWT create/verify (HS256, 30d expiry)
 │   └── ws_manager.py           # Active WebSocket connection pool
 ├── models/
@@ -118,15 +134,22 @@ backend/app/
 │   ├── conversation.py         # MessageOut, ConversationOut, ConversationWithMessages
 │   └── ws_messages.py          # 10+ WS frame Pydantic schemas
 ├── services/llm/
-│   ├── base.py                 # BaseLLMProvider ABC (stream + run_agent_loop)
+│   ├── base.py                 # BaseLLMProvider ABC (stream, run_agent_loop, execute_skill)
 │   ├── factory.py              # Provider discovery + registration by API key presence
 │   ├── llm_service.py          # Thin orchestrator — selects provider, calls stream()
 │   └── providers/
-│       ├── anthropic_provider.py   # Claude — tool_use multi-turn loop
-│       ├── openai_provider.py      # GPT — function_calling loop (o1/o3 overrides)
-│       ├── gemini_provider.py      # Google ADK LlmAgent / ParallelAgent
+│       ├── anthropic_provider.py   # Claude — tool_use multi-turn loop + skill execution
+│       ├── openai_provider.py      # GPT — function_calling loop + skill execution
+│       ├── gemini_provider.py      # Google ADK LlmAgent / ParallelAgent + skill execution
 │       └── aws_provider.py         # Strands Agent dual-mode (agentic + streaming)
+├── skills/                     # YAML skill definitions (*.yaml) — hot-reloaded
+│   └── summarise_document.yaml # Built-in document summarisation skill
 └── agent/
+    ├── orchestrator.py         # ChatOrchestrator — skill → DB agent → freeform routing
+    ├── routing.py              # Per-provider confidence extraction (Gemini/OpenAI/Anthropic)
+    ├── skill_registry.py       # YAML skill loader, validator, hot-reload via watchdog
+    ├── skill_prompt_builder.py # Assembles LLM system prompt from YAML skill definition
+    ├── session_model_store.py  # Per-conversation model preference (Redis / in-memory)
     ├── query_router.py         # Intent classification (keyword → LLM fallback)
     ├── intent_loader.py        # YAML intent schema loader + validator
     ├── dataframe_store.py      # Redis-backed DataFrame cache (JSON serialization)
@@ -160,14 +183,15 @@ The FastAPI application registers four route groups:
 | `GET /conversations` | `conversations.py` | List conversations for authenticated user |
 | `GET /conversations/{id}` | `conversations.py` | Get conversation with full message history |
 | `DELETE /conversations/{id}` | `conversations.py` | Delete conversation and cascade messages |
+| `PATCH /api/sessions/{id}/model` | `sessions.py` | Switch the active model for a conversation session without losing history |
 | `GET /health` | `health.py` | Liveness probe — returns version + provider list |
 
 The WebSocket handler in `chat_ws.py` is the orchestration hub. On each incoming message it:
 
 1. Decodes and validates the JWT (401 disconnect if invalid)
 2. Checks `ClarificationState` — if a pending clarification exists, routes as a clarification answer
-3. Calls `QueryRouter.is_data_query()` to classify the message
-4. Routes to `LLMService.stream()` (freeform) or `provider.run_agent_loop()` (data query)
+3. Delegates to `ChatOrchestrator.route()` which tries skill-matching before calling `QueryRouter`
+4. Routes to skill execution, `LLMService.stream()` (freeform), or `provider.run_agent_loop()` (data query)
 5. Persists the user message and assistant response to SQLite
 6. Sends a `WsTitle` frame with an auto-generated conversation title on first message
 
@@ -177,27 +201,47 @@ The WebSocket handler in `chat_ws.py` is the orchestration hub. On each incoming
 classDiagram
     class BaseLLMProvider {
         <<abstract>>
-        +name: str
+        +provider_name: str
         +stream(messages, model, system) AsyncIterator~str~
-        +run_agent_loop(messages, tools, context) WsAgentResponse
+        +generate(messages, model, max_tokens) str
+        +run_agent_loop(messages, tools, context) AgentLoopResult
+        +execute_skill(session_id, user_message, skill, params, model) SkillResult
+    }
+    class RoutingDecision {
+        <<enum>>
+        CALL_SKILL
+        CLARIFY
+        GENERIC_ANSWER
+    }
+    class SkillResult {
+        <<dataclass>>
+        +routing_decision: RoutingDecision
+        +content: str
+    }
+    class AgentLoopResult {
+        <<dataclass>>
+        +routing_decision: RoutingDecision
     }
     class AnthropicProvider {
-        +name = "anthropic"
+        +provider_name = "anthropic"
         +stream() tool_use multi-turn
         +run_agent_loop() tool_use loop
+        +execute_skill() system-prompt injection
     }
     class OpenAIProvider {
-        +name = "openai"
+        +provider_name = "openai"
         +stream() standard streaming
         +run_agent_loop() function_calling loop
+        +execute_skill() system-prompt injection
     }
     class GeminiProvider {
-        +name = "gemini"
+        +provider_name = "gemini"
         +stream() ADK streaming
         +run_agent_loop() ADK LlmAgent orchestration
+        +execute_skill() system-prompt injection
     }
     class AWSProvider {
-        +name = "aws"
+        +provider_name = "aws"
         +stream() Bedrock streaming fallback
         +run_agent_loop() Strands Agent loop
     }
@@ -212,13 +256,113 @@ classDiagram
     BaseLLMProvider <|-- GeminiProvider
     BaseLLMProvider <|-- AWSProvider
     LLMProviderFactory --> BaseLLMProvider
+    BaseLLMProvider ..> SkillResult
+    BaseLLMProvider ..> AgentLoopResult
+    SkillResult --> RoutingDecision
+    AgentLoopResult --> RoutingDecision
 ```
 
 `LLMProviderFactory` auto-discovers providers at startup by checking whether their respective API keys / credentials are configured. Only available providers are registered and returned to the frontend.
 
-Each provider implements two methods:
+Each provider implements three methods:
 - `stream()` — used for freeform chat, yields string tokens
-- `run_agent_loop()` — used for data queries, drives the tool-calling loop using the provider's native pattern (tool_use, function_calling, ADK tool definitions, or Strands Agent tools)
+- `generate()` — single-turn non-streaming call (used internally by `ChatOrchestrator` for skill-matching)
+- `run_agent_loop()` — drives the database tool-calling loop using the provider's native pattern (tool_use, function_calling, ADK tool definitions, or Strands Agent tools)
+- `execute_skill()` — optional override; injects the skill's assembled system prompt and calls `generate()`. `AWSProvider` raises `NotImplementedError` (falls through to `GENERIC_ANSWER`)
+
+### ChatOrchestrator and Skill System
+
+`ChatOrchestrator` is the primary routing layer. Every incoming WebSocket message is routed through it before any LLM call, database query, or freeform response is issued.
+
+#### Routing decision tree
+
+```mermaid
+flowchart TD
+    WS["chat_ws.py"] --> CO["ChatOrchestrator.route()"]
+    CO --> SM["_match_skill()\nLLM rates confidence 0.0–1.0"]
+    SM -->|"≥ 0.85 (HIGH)"| CS_EXEC["execute_skill()\nSkillPromptBuilder → LLM"]
+    SM -->|"0.50 – 0.84"| CLAR["CLARIFY\nask user to confirm intent"]
+    SM -->|"< 0.50 or no skills"| GEN["GENERIC_ANSWER\ndelegates to QueryRouter"]
+    CS_EXEC --> SR_RET["SkillResult → WsAgentResponse equivalent"]
+    GEN --> QR_DQ{QueryRouter\nis_data_query?}
+    QR_DQ -->|Yes| Loop["Provider.run_agent_loop()"]
+    QR_DQ -->|No| Freeform["LLMService.stream()"]
+```
+
+| Decision | Confidence | Action |
+|----------|-----------|--------|
+| `CALL_SKILL` | ≥ 0.85 | Run `execute_skill()` on the matched YAML skill, return `SkillResult` |
+| `CLARIFY` | 0.50 – 0.84 | Send clarification question; wait for user confirmation |
+| `GENERIC_ANSWER` | < 0.50 or no skills loaded | Delegate to `QueryRouter` → agent loop or freeform stream |
+
+#### SkillRegistry
+
+Loads and maintains the in-memory YAML skill registry.
+
+- Scans `SKILLS_DIR` for `*.yaml` files at startup
+- Validates each file against `SkillSchema` (Pydantic); invalid files are skipped with a warning — they do not block startup
+- When `watchdog` is installed, an `Observer` thread watches `SKILLS_DIR` for changes and calls `reload()` asynchronously
+- An `asyncio.Lock` prevents race conditions during reload
+
+```mermaid
+classDiagram
+    class SkillRegistry {
+        -_dir: Path
+        -_skills: dict~str, SkillSchema~
+        -_lock: asyncio.Lock
+        +get_skill(name) SkillSchema
+        +list_skills() list~str~
+        +get_all_descriptions() str
+        +reload() async
+    }
+    class SkillSchema {
+        +name: str
+        +description: str
+        +instructions: str
+        +parameters: dict~str, SkillParameter~
+        +output_format: str
+        +tags: list~str~
+    }
+    class SkillParameter {
+        +type: str
+        +required: bool
+        +default: Any
+        +description: str
+    }
+    SkillRegistry --> SkillSchema
+    SkillSchema --> SkillParameter
+```
+
+#### SkillPromptBuilder
+
+Stateless helper. Combines the skill's `instructions`, resolved `params`, and `output_format` into a single LLM system prompt string. The resulting prompt is passed as the system instruction to whichever provider executes `execute_skill()`.
+
+#### Per-provider confidence extraction (`routing.py`)
+
+The skill-match LLM call returns a JSON object with a self-reported `confidence` float. `routing.py` applies provider-specific logic before the orchestrator applies thresholds:
+
+| Provider | Primary signal | Fallback |
+|----------|---------------|---------|
+| Anthropic | Self-reported float | — (optional: `ENABLE_ANTHROPIC_SELF_EVAL=true`) |
+| OpenAI | Self-reported float | — (optional: `ENABLE_LOGPROB_CONFIDENCE=true` for logprobs) |
+| Gemini | Self-reported float | Jaccard keyword-overlap heuristic capped at 0.49 when self-reported is 0.0 |
+
+The 0.49 cap on the Gemini fallback ensures weak keyword matches never trigger a `CLARIFY` (which requires ≥ 0.50).
+
+#### SessionModelStore
+
+Persists the active model preference per conversation session.
+
+```
+Key format:  "session_model:{conversation_id}"
+Value:       model name string
+TTL:         86400s (24 hours)
+Backends:    Redis (when REDIS_ENABLED=true) | in-process dict (fallback)
+```
+
+Updated via `PATCH /api/sessions/{session_id}/model`. Resolved on each WebSocket message so the preference survives page refreshes and reconnections within the TTL window.
+
+---
 
 ### Agentic Orchestration Layer
 
@@ -226,7 +370,8 @@ The agent layer sits between the WebSocket handler and the database connectors.
 
 ```mermaid
 flowchart TD
-    WS["chat_ws.py\n(WebSocket handler)"] --> QR["QueryRouter\nis_data_query()"]
+    WS["chat_ws.py\n(WebSocket handler)"] --> CO["ChatOrchestrator\n(GENERIC_ANSWER path)"]
+    CO --> QR["QueryRouter\nis_data_query()"]
     QR -->|confidence ≥ threshold| Loop["Provider.run_agent_loop()"]
     QR -->|confidence < threshold| CS["ClarificationState.save()"]
     CS -->|WS frame| Client["WsClarificationRequest"]
@@ -348,14 +493,15 @@ Cortex ANALYST and COMPLETE/SUMMARIZE are guarded with `try/except ProgrammingEr
 
 ### Session State (Redis)
 
-Redis provides two independent namespaces:
+Redis provides three independent namespaces:
 
 | Namespace | Purpose | TTL |
 |-----------|---------|-----|
-| `df:{user_id}:{conversation_id}:{label}` | DataFrame cache | 3600s |
+| `df:{user_id}:{conversation_id}:{label}` | DataFrame cache for agent tool results | 3600s |
 | `clarification:{user_id}:{conversation_id}` | Loop suspension state | 300s |
+| `session_model:{conversation_id}` | Active model preference per conversation | 86400s |
 
-When `REDIS_ENABLED=false` (default), both stores fall back to in-process Python dicts. This is sufficient for single-worker deployments (local dev, single Cloud Run instance). For multi-worker production deployments, enable Redis.
+When `REDIS_ENABLED=false` (default), all three stores fall back to in-process Python dicts. This is sufficient for single-worker deployments (local dev, single Cloud Run instance). For multi-worker production deployments, enable Redis.
 
 ### Persistence (SQLite / PostgreSQL)
 
@@ -435,19 +581,50 @@ interface ClarificationRequestFrame {
 
 ## Data Flows
 
+### Skill Execution
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant WS as chat_ws.py
+    participant CO as ChatOrchestrator
+    participant SR as SkillRegistry
+    participant SPB as SkillPromptBuilder
+    participant Provider
+
+    Client->>WS: WsIncoming {content: "Summarise this document: ..."}
+    WS->>CO: route("Summarise this document...", session_id, model)
+    CO->>Provider: generate(skill_match_prompt)
+    Provider-->>CO: {"skill_name": "summarise_document", "confidence": 0.92}
+    CO->>SR: get_skill("summarise_document")
+    SR-->>CO: SkillSchema
+    CO->>Provider: execute_skill(session_id, user_message, skill, params, model)
+    Provider->>SPB: build(skill, params)
+    SPB-->>Provider: assembled system prompt
+    Provider-->>CO: SkillResult {content: "{executive_summary: ..., key_points: [...]}"}
+    CO-->>WS: OrchestratorResult {routing_decision: CALL_SKILL, skill_result}
+    WS-->>Client: WsAgentResponse (skill content formatted as response)
+    WS->>SQLite: persist messages
+```
+
 ### Freeform Chat
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant WS as chat_ws.py
+    participant CO as ChatOrchestrator
     participant QR as QueryRouter
     participant LLM as LLMService
     participant Provider
 
-    Client->>WS: WsIncoming {type: "message", content: "Explain WebFlux"}
-    WS->>QR: is_data_query("Explain WebFlux")
-    QR-->>WS: {top_intent: "freeform", confidence: 0.02}
+    Client->>WS: WsIncoming {content: "Explain WebFlux"}
+    WS->>CO: route("Explain WebFlux", session_id, model)
+    CO->>Provider: generate(skill_match_prompt)
+    Provider-->>CO: {"skill_name": null, "confidence": 0.0}
+    CO->>QR: is_data_query("Explain WebFlux")
+    QR-->>CO: {top_intent: "freeform", confidence: 0.02}
+    CO-->>WS: OrchestratorResult {routing_decision: GENERIC_ANSWER, use_agent_loop: false}
     WS->>LLM: stream(messages, model, provider)
     LLM->>Provider: stream()
     loop Token streaming
@@ -465,6 +642,7 @@ sequenceDiagram
 sequenceDiagram
     participant Client
     participant WS as chat_ws.py
+    participant CO as ChatOrchestrator
     participant QR as QueryRouter
     participant Loop as Provider Agent Loop
     participant ST as SharedToolkit
@@ -473,8 +651,12 @@ sequenceDiagram
     participant RF as ResponseFormatter
 
     Client->>WS: WsIncoming {content: "Revenue by product for Q1"}
-    WS->>QR: is_data_query(content)
-    QR-->>WS: {top_intent: "sales_revenue", confidence: 0.88}
+    WS->>CO: route(content, session_id, model)
+    CO->>Provider: generate(skill_match_prompt)
+    Provider-->>CO: {"skill_name": null, "confidence": 0.1}
+    CO->>QR: is_data_query(content)
+    QR-->>CO: {top_intent: "sales_revenue", confidence: 0.88}
+    CO-->>WS: OrchestratorResult {routing_decision: GENERIC_ANSWER, use_agent_loop: true}
 
     WS->>Loop: run_agent_loop(messages, tools, context)
     Loop-->>Client: WsAgentProgress {step: 1, message: "Analysing query..."}
@@ -594,6 +776,7 @@ CREATE INDEX ix_messages_conversation_id ON messages (conversation_id);
 |-------------|-----------|-----|---------|
 | `df:{user_id}:{conversation_id}:{label}` | JSON string (orient=split) | 3600s | DataFrame cache for agent tool results |
 | `clarification:{user_id}:{conversation_id}` | JSON object | 300s | Suspended agent loop + candidate list |
+| `session_model:{conversation_id}` | String (model name) | 86400s | Active model preference set via `PATCH /api/sessions/{id}/model` |
 
 The `{label}` is set by the LLM via tool call arguments. Scoping by `{user_id}:{conversation_id}` prevents cross-conversation data leakage. JSON serialization (not pickle) prevents remote code execution via deserialization.
 
@@ -610,7 +793,7 @@ graph LR
     Settings --> Core["SECRET_KEY\nDATABASE_URL\nDEBUG\nCORS_ORIGIN"]
     Settings --> Providers["ANTHROPIC_API_KEY\nOPENAI_API_KEY\nGOOGLE_API_KEY\nAWS_*"]
     Settings --> Redis["REDIS_ENABLED\nREDIS_URL\nDATAFRAME_TTL_SECONDS"]
-    Settings --> Agent["MAX_TOOL_CALLS\nMAX_DATAFRAME_ROWS\nINTENT_DIR\nPROMPT_DIR"]
+    Settings --> Agent["MAX_TOOL_CALLS\nMAX_DATAFRAME_ROWS\nINTENT_DIR\nPROMPT_DIR\nSKILLS_DIR"]
     Settings --> Snowflake["SNOWFLAKE_ACCOUNT\nSNOWFLAKE_USER\nSNOWFLAKE_PASSWORD\n..."]
     Settings --> BigQuery["BIGQUERY_PROJECT_ID\nGOOGLE_APPLICATION_CREDENTIALS"]
     Settings --> MSSQL["MSSQL_SERVER\nMSSQL_DATABASE\nMSSQL_USERNAME\n..."]
@@ -620,30 +803,77 @@ graph LR
 
 ## Deployment Topology
 
-### Local (Docker Compose)
+The stack runs on any Docker Compose v2 host. All four services are defined in `docker-compose.yml`; nginx is the only container with a public port.
+
+### Service layout
 
 ```
 docker-compose.yml
-├── backend  (port 8000)  — Python FastAPI image
-│   └── mounts ./data/ for SQLite persistence
-├── frontend (port 4200)  — Angular + nginx image
-│   └── proxies /ws → backend:8000
-└── redis    (port 6379)  — Redis 7 alpine (optional, enable with REDIS_ENABLED=true)
+├── nginx    (host port 80)   — sole public entry point; routes / → frontend, /api → backend, /ws → backend
+├── frontend (internal :80)   — Angular SPA served by nginx inside the container
+├── backend  (internal :8000) — FastAPI; volume-mounts sqlite_data + skills/ (read-only)
+└── redis    (internal :6379) — Redis 7 alpine, AOF persistence, health-checked
 ```
 
-### GCP Cloud Run
+Named volumes:
+
+| Volume | Mount inside container | Purpose |
+|--------|----------------------|---------|
+| `sqlite_data` | `/app/data` | SQLite chat history (survives container restarts) |
+| `redis_data` | `/data` | Redis AOF log (survives container restarts) |
+
+### Local development
+
+`docker compose up --build` — identical to production topology. Frontend is reachable at `http://localhost`.
+
+For frontend hot-reload without Docker:
 
 ```
-Artifact Registry
-├── backend:latest   → Cloud Run service (backend)
-│   ├── Env vars from Secret Manager
-│   ├── Optional: Cloud SQL (PostgreSQL) via unix socket
-│   └── Optional: Cloud Memorystore (Redis) via VPC connector
-└── frontend:latest  → Cloud Run service (frontend)
-    └── Env var BACKEND_URL points to backend Cloud Run URL
+npm start (Angular dev server :4200)
+uvicorn app.main:app --reload  (backend :8000, direct)
 ```
 
-The frontend nginx configuration auto-upgrades `http → https` and `ws → wss` in Cloud Run. The WebSocket URL is resolved at runtime from `window.location`, so no image rebuild is needed when the backend URL changes.
+### Production (any host)
+
+The Compose stack runs unchanged on any Linux host. TLS is terminated by a host-level reverse proxy sitting in front of port 80.
+
+```mermaid
+graph TD
+    Internet["Internet"] -->|"443 (TLS)"| RP["Host reverse proxy\n(Caddy or nginx + certbot)"]
+    RP -->|"http://localhost:80"| NX["nginx container\n(Compose port 80)"]
+    NX -->|"http://frontend:80 (internal)"| FE["Angular frontend container"]
+    NX -->|"http://backend:8000 (internal)"| BE["FastAPI backend container"]
+    BE --> RD["Redis container\n(internal :6379)"]
+    BE --> DB[("sqlite_data volume\nor external PostgreSQL")]
+```
+
+**Host reverse proxy options:**
+
+| Option | TLS management | Config |
+|--------|---------------|--------|
+| Caddy | Automatic (Let's Encrypt) | `reverse_proxy localhost:80` in Caddyfile |
+| nginx + certbot | Manual renewal (or certbot timer) | `proxy_pass http://localhost:80;` with `proxy_read_timeout 3600s` for WebSocket |
+
+The `proxy_read_timeout 3600s` (nginx) or equivalent idle timeout is required — WebSocket connections are long-lived and will be killed by the default 60s timeout.
+
+### Database options
+
+| Option | When to use | `DATABASE_URL` format |
+|--------|------------|----------------------|
+| SQLite (default) | Single host, low traffic | `sqlite+aiosqlite:///./data/chatbot.db` |
+| External PostgreSQL | Multiple replicas, managed backup | `postgresql+asyncpg://user:pass@host:5432/chatbot` |
+
+Switching to PostgreSQL requires `asyncpg` in `requirements.txt` and running `alembic upgrade head` on first deploy.
+
+### WebSocket URL resolution
+
+The Angular service reads `window.location` at runtime to build the WebSocket URL — no environment-specific image rebuild is needed:
+
+| Entry point | Resolved WebSocket URL |
+|-------------|----------------------|
+| `http://localhost` (Compose, no TLS) | `ws://localhost/ws/chat` |
+| `https://your-domain.com` (TLS via host proxy) | `wss://your-domain.com/ws/chat` |
+| `http://localhost:4200` (local dev server) | `ws://localhost:4200` via `proxy.conf.json` → `localhost:8000` |
 
 ---
 
@@ -673,6 +903,18 @@ Snowflake, BigQuery, and MSSQL clients are all synchronous. Wrapping calls in `a
 
 The Angular service resolves the WebSocket URL from `window.location` at runtime rather than baking it into the build. This means the same Docker image runs identically in `ng serve`, Docker Compose, and Cloud Run without environment-specific builds.
 
+### 7. ChatOrchestrator three-tier routing
+
+Skill matching runs before the database agent and freeform paths. This preserves all existing behavior (the `GENERIC_ANSWER` path is identical to the pre-orchestrator code path) while adding extensibility without modifying any existing provider code.
+
+The LLM skill-match call uses `generate()` (non-streaming, max 256 tokens) rather than `stream()`, so the round-trip adds minimal latency (~50–150ms) per message. When no skills are loaded, the match call is skipped entirely — zero overhead.
+
+### 8. YAML skill hot-reload
+
+Skills are defined in `*.yaml` files, not code. This allows adding or updating skills without restarting the server (watchdog must be installed) and without touching provider-specific code. Invalid YAML files produce a warning log and are skipped — they do not affect existing skills or block startup.
+
+The two response type families (`SkillResult` vs `AgentLoopResult`) are intentionally kept separate. Merging them would require many optional fields and conflate the NLP/document skill path with the database tool-use path, making both harder to reason about.
+
 ---
 
 ## Known Limitations and Future Work
@@ -693,6 +935,9 @@ The Angular service resolves the WebSocket URL from `window.location` at runtime
 |-----|-----------|
 | A1 | `GeminiProvider` class name must match the factory import exactly |
 | A2 | `run_agent_loop()` raises `NotImplementedError` by default (not abstract) to preserve stream-only provider compatibility during transition |
+| A3 | `execute_skill()` raises `NotImplementedError` on `AWSProvider` — the orchestrator catches this and falls through to `GENERIC_ANSWER` |
+| A4 | Skill-match prompt concatenates all skill descriptions; beyond ~30 skills (~4,500 tokens) smaller context windows may degrade match quality — add tag-based pre-filtering at that scale |
 | PR1 | Snowflake Cortex ANALYST / COMPLETE require Enterprise tier — errors are caught and surfaced to the agent as a clear message |
 | PR2 | ODBC Driver 18 must be installed before `pip install` in the Dockerfile — order matters |
 | Q2 | DataFrameStore uses JSON (not pickle) — this is a deliberate security constraint, not a limitation |
+| SK1 | `SkillRegistry.reload()` is protected by `asyncio.Lock` but the watchdog `Observer` runs in a daemon thread — skills are eventually consistent during hot-reload, not transactionally consistent |
