@@ -426,3 +426,7 @@
 - blackbox/audit.md
 - blackbox/session-log.md
 <!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-22T07:23:46Z -->
+- blackbox/audit.md
+<!-- end-snapshot -->
