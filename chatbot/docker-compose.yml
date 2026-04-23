@@ -1,24 +1,40 @@
-version: "3.9"
-
 services:
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks: [data]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # Enterprise args injected automatically by build.sh / build.ps1.
+      # See enterprise-build.example for setup instructions.
+      args:
+        CORPORATE_CA_CERT: ${CORPORATE_CA_CERT:-}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+    image: chatbot-backend:latest
     # No external port — nginx is the sole public entry point.
     expose:
       - "8000"
@@ -31,17 +47,33 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    restart: unless-stopped
+    networks: [app, data]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        CORPORATE_CA_CERT: ${CORPORATE_CA_CERT:-}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+    image: chatbot-frontend:latest
     expose:
       - "80"
     environment:
@@ -49,17 +81,51 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    restart: unless-stopped
+    networks: [frontend]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
 
   nginx:
     build:
       context: ./nginx
       dockerfile: Dockerfile
+      args:
+        CORPORATE_CA_CERT: ${CORPORATE_CA_CERT:-}
+    image: chatbot-nginx:latest
     ports:
       - "80:80"
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    # Bridges frontend (static) and app (backend API) networks
+    networks: [frontend, app]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+
+networks:
+  frontend:
+    driver: bridge
+  app:
+    driver: bridge
+  data:
+    driver: bridge
+    internal: true   # redis unreachable from host and internet
 
 volumes:
   sqlite_data:

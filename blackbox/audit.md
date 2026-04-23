@@ -2983,3 +2983,63 @@ git push with the commit message on the changes
 ## 2026-04-22T13:08:31Z
 git push all files
 ---
+
+## 2026-04-23T11:28:29Z
+/docker review docker file. problem, image is recreated and old one is not deleted.
+---
+
+## 2026-04-23T11:31:04Z
+fix all
+---
+
+## 2026-04-23T11:35:10Z
+handle all the potential concern in all docker file
+---
+
+## 2026-04-23T11:42:42Z
+during migration, copy the sqlite_data and migrate
+---
+
+## 2026-04-23T11:46:43Z
+address all pontential concerns and review docker design using /docker skill
+---
+
+## 2026-04-23T11:53:27Z
+/docker review all docker files
+---
+
+## 2026-04-23T11:56:43Z
+/docker ensure all installation can be done on enterprise computer window OS that may encounter certificate issue
+---
+
+## 2026-04-23T12:06:01Z
+/docker review and enhance with a more intuitive way to set corporate_ca_cert, http_proxy, https_proxy, no_proxy or any argument to overcome certificate issue
+---
+
+## 2026-04-23T12:11:34Z
+/error-detective, ignore all documentations while checking the errror
+---
+
+## 2026-04-23T12:13:22Z
+/error-detective, ignore all documentations while checking the errror
+---
+
+## 2026-04-23T12:47:38Z
+Implement all the 6 findings
+---
+
+## 2026-04-23T12:50:30Z
+/documentation-generation you must read all lines of code. ignore all existing documentation and replace all documentation.
+---
+
+## 2026-04-23T13:39:36Z
+check /chatbot/scripts and all .ps1 and .sh file, check their purpose and consolidate them. update to readme.md on how to use it
+---
+
+## 2026-04-23T13:44:55Z
+cd ..
+---
+
+## 2026-04-23T13:45:54Z
+why do you create two readme.md file. keep the most accurate one at the right place. remove breaking_changes.md
+---

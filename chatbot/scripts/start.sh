@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Start all services (build images if needed).
+# Start all services. Delegates to build.sh for enterprise CA/proxy support.
 set -euo pipefail
 
-CHATBOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CHATBOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$CHATBOT_DIR"
 
-bash "$(dirname "$0")/check_prereqs.sh"
+bash "$SCRIPT_DIR/check_prereqs.sh"
 
 echo "Building and starting services..."
-docker-compose up --build -d
+bash "$CHATBOT_DIR/build.sh"
 
 echo ""
 echo "Stack is up. Open http://localhost in your browser."
 echo "Logs: docker-compose logs -f"
-echo "Stop: $(dirname "$0")/stop.sh"
+echo "Stop: $SCRIPT_DIR/stop.sh"

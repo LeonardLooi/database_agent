@@ -58,6 +58,14 @@ class DataFrameStore:
     # ── public API ──────────────────────────────────────────────────────────
 
     def store(self, user_id: str, conversation_id: str, label: str, df: pd.DataFrame) -> None:
+        """Serialise and persist a DataFrame under a session-scoped label.
+
+        Args:
+            user_id: Authenticated user who owns this DataFrame.
+            conversation_id: Conversation in which the DataFrame was produced.
+            label: Short name for this result (e.g. ``"snowflake_result"``).
+            df: DataFrame to store. Serialised as JSON ``orient="split"``.
+        """
         key = _make_key(user_id, conversation_id, label)
         serialized = df.to_json(orient="split")
         if self._redis is not None:
@@ -67,6 +75,17 @@ class DataFrameStore:
         logger.debug("dataframe_stored", key=key, rows=len(df), columns=list(df.columns))
 
     def retrieve(self, user_id: str, conversation_id: str, label: str) -> pd.DataFrame | None:
+        """Deserialise and return a stored DataFrame, or ``None`` if not found or expired.
+
+        Args:
+            user_id: Owning user.
+            conversation_id: Owning conversation.
+            label: Label used when the DataFrame was stored.
+
+        Returns:
+            Reconstructed ``pd.DataFrame``, or ``None`` if the key does not exist
+            or its TTL has elapsed.
+        """
         key = _make_key(user_id, conversation_id, label)
         raw = self._redis.get(key) if self._redis is not None else self._mem_get(key)
         if raw is None:
@@ -77,12 +96,26 @@ class DataFrameStore:
         return df
 
     def exists(self, user_id: str, conversation_id: str, label: str) -> bool:
+        """Return ``True`` if a non-expired DataFrame exists under the given label.
+
+        Args:
+            user_id: Owning user.
+            conversation_id: Owning conversation.
+            label: Label to check.
+        """
         key = _make_key(user_id, conversation_id, label)
         if self._redis is not None:
             return bool(self._redis.exists(key))
         return self._mem_exists(key)
 
     def delete(self, user_id: str, conversation_id: str, label: str) -> None:
+        """Remove a stored DataFrame. No-op if the label does not exist.
+
+        Args:
+            user_id: Owning user.
+            conversation_id: Owning conversation.
+            label: Label of the DataFrame to remove.
+        """
         key = _make_key(user_id, conversation_id, label)
         if self._redis is not None:
             self._redis.delete(key)
@@ -90,6 +123,15 @@ class DataFrameStore:
             self._mem_delete(key)
 
     def list_labels(self, user_id: str, conversation_id: str) -> list[str]:
+        """Return all non-expired DataFrame labels for a conversation session.
+
+        Args:
+            user_id: Owning user.
+            conversation_id: Owning conversation.
+
+        Returns:
+            List of label strings in no guaranteed order.
+        """
         prefix = _make_key(user_id, conversation_id, "")
         if self._redis is not None:
             keys = self._redis.keys(_make_key(user_id, conversation_id, "*"))

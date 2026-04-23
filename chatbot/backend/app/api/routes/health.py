@@ -16,6 +16,19 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health")
 async def health(db: AsyncSession = Depends(get_db)) -> dict:
+    """Return application health status.
+
+    Verifies database connectivity with a ``SELECT 1`` probe and lists all
+    registered LLM providers. Always returns HTTP 200 — the ``db`` field
+    indicates whether the database check passed.
+
+    Args:
+        db: Injected async database session.
+
+    Returns:
+        Dict with keys: ``status``, ``db``, ``ws_connections``,
+        ``active_provider``, ``available_providers``, and ``version``.
+    """
     db_status = "connected"
     try:
         await db.execute(text("SELECT 1"))

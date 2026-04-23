@@ -669,3 +669,198 @@
 - chatbot/frontend/src/app/features/chat/chat-shell.component.ts
 - chatbot/frontend/src/app/features/sidebar/sidebar.component.ts
 <!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T11:29:25Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T11:33:49Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/Dockerfile
+- chatbot/docker-compose.dev.yml
+- chatbot/docker-compose.yml
+- chatbot/frontend/Dockerfile
+- chatbot/nginx/Dockerfile
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T11:37:52Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/Dockerfile
+- chatbot/docker-compose.dev.yml
+- chatbot/docker-compose.yml
+- chatbot/frontend/Dockerfile
+- chatbot/nginx/Dockerfile
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T11:43:50Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/Dockerfile
+- chatbot/docker-compose.dev.yml
+- chatbot/docker-compose.yml
+- chatbot/frontend/Dockerfile
+- chatbot/nginx/Dockerfile
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T11:50:39Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/Dockerfile
+- chatbot/docker-compose.dev.yml
+- chatbot/docker-compose.yml
+- chatbot/frontend/Dockerfile
+- chatbot/nginx/Dockerfile
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T11:55:10Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/Dockerfile
+- chatbot/docker-compose.dev.yml
+- chatbot/docker-compose.yml
+- chatbot/frontend/Dockerfile
+- chatbot/nginx/Dockerfile
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T12:00:51Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/Dockerfile
+- chatbot/docker-compose.dev.yml
+- chatbot/docker-compose.yml
+- chatbot/frontend/Dockerfile
+- chatbot/nginx/Dockerfile
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T12:08:44Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chat-before-send.png
+- chat-bug-send-disabled.png
+- chat-collapsed-sidebar.png
+- chat-dark-mode.png
+- chat-landing.png
+- chat-response.png
+- chatbot/backend/Dockerfile
+- chatbot/docker-compose.dev.yml
+- chatbot/docker-compose.yml
+- chatbot/frontend/Dockerfile
+- chatbot/nginx/Dockerfile
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T12:16:42Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chat-before-send.png
+- chat-bug-send-disabled.png
+- chat-collapsed-sidebar.png
+- chat-dark-mode.png
+- chat-landing.png
+- chat-response.png
+- chatbot/backend/Dockerfile
+- chatbot/docker-compose.dev.yml
+- chatbot/docker-compose.yml
+- chatbot/frontend/Dockerfile
+- chatbot/nginx/Dockerfile
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T12:49:17Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chat-before-send.png
+- chat-bug-send-disabled.png
+- chat-collapsed-sidebar.png
+- chat-dark-mode.png
+- chat-landing.png
+- chat-response.png
+- chatbot/backend/Dockerfile
+- chatbot/backend/app/agent/connectors/snowflake_connector.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/main.py
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/docker-compose.dev.yml
+- chatbot/docker-compose.yml
+- chatbot/frontend/Dockerfile
+- chatbot/nginx/Dockerfile
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T12:56:43Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chat-before-send.png
+- chat-bug-send-disabled.png
+- chat-collapsed-sidebar.png
+- chat-dark-mode.png
+- chat-landing.png
+- chat-response.png
+- chatbot/backend/Dockerfile
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/connectors/snowflake_connector.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/agent/orchestrator.py
+- chatbot/backend/app/agent/response_formatter.py
+- chatbot/backend/app/agent/session_model_store.py
+- chatbot/backend/app/agent/skill_registry.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/api/routes/health.py
+- chatbot/backend/app/core/database.py
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T13:41:31Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chat-before-send.png
+- chat-bug-send-disabled.png
+- chat-collapsed-sidebar.png
+- chat-dark-mode.png
+- chat-landing.png
+- chat-response.png
+- chatbot/backend/Dockerfile
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/connectors/snowflake_connector.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/agent/orchestrator.py
+- chatbot/backend/app/agent/response_formatter.py
+- chatbot/backend/app/agent/session_model_store.py
+- chatbot/backend/app/agent/skill_registry.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/api/routes/health.py
+- chatbot/backend/app/core/database.py
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-23T13:45:03Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chat-before-send.png
+- chat-bug-send-disabled.png
+- chat-collapsed-sidebar.png
+- chat-dark-mode.png
+- chat-landing.png
+- chat-response.png
+- chatbot/backend/Dockerfile
+- chatbot/backend/app/agent/clarification_state.py
+- chatbot/backend/app/agent/connectors/snowflake_connector.py
+- chatbot/backend/app/agent/dataframe_store.py
+- chatbot/backend/app/agent/orchestrator.py
+- chatbot/backend/app/agent/response_formatter.py
+- chatbot/backend/app/agent/session_model_store.py
+- chatbot/backend/app/agent/skill_registry.py
+- chatbot/backend/app/api/routes/chat_ws.py
+- chatbot/backend/app/api/routes/health.py
+- chatbot/backend/app/core/database.py
+<!-- end-snapshot -->

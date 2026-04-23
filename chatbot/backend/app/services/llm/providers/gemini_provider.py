@@ -236,7 +236,18 @@ class GeminiProvider(BaseLLMProvider):
         def _refresh() -> None:
             self._credentials.refresh(google.auth.transport.requests.Request())
 
-        await asyncio.get_event_loop().run_in_executor(None, _refresh)
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, _refresh)
+        except Exception as cred_exc:
+            logger.error(
+                "gemini_credential_refresh_failed",
+                error=str(cred_exc),
+                user_id=ctx.user_id,
+            )
+            return AgentLoopResult(
+                status="error",
+                error=f"GCP credential refresh failed: {cred_exc}",
+            )
 
         toolkit = SharedToolkit()
 

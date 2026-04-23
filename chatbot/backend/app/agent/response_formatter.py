@@ -25,6 +25,24 @@ class ResponseFormatter:
         provider: str,
         model: str,
     ) -> WsAgentResponse:
+        """Assemble a ``WsAgentResponse`` from a completed ``AgentLoopResult``.
+
+        Looks up the last stored DataFrame for this conversation, renders it as
+        a markdown table (capped at 50 display rows) and a full CSV export, then
+        packages everything alongside the LLM explanation.
+
+        Args:
+            result: Completed result from a provider's ``run_agent_loop()``.
+                Must have ``status == "completed"``; call this only after verifying
+                the status — do not call for ``"error"`` or ``"clarification_pending"``.
+            conversation_id: Conversation this response belongs to.
+            user_id: Authenticated user who triggered the query.
+            provider: Provider name string (e.g. ``"anthropic"``).
+            model: Model identifier used for this turn.
+
+        Returns:
+            ``WsAgentResponse`` ready to serialise and send over WebSocket.
+        """
         table_md = ""
         csv_data = ""
         row_count = result.row_count

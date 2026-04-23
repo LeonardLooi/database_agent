@@ -81,6 +81,28 @@ class ChatOrchestrator:
         session_id: str,
         model: str,
     ) -> OrchestratorResult:
+        """Route a user message to the best handler and return the routing outcome.
+
+        Step 1 — Skill match: asks the active provider which YAML skill (if any)
+        matches the message. Skipped when no skills are loaded.
+
+        Step 2 — Confidence threshold:
+          - ≥ 0.85 → ``CALL_SKILL``: execute the matched skill immediately.
+          - 0.50–0.85 → ``CLARIFY``: ask the user to confirm the skill intent.
+          - < 0.50 → fall through to ``GENERIC_ANSWER``.
+
+        Step 3 — Generic answer: delegates to ``QueryRouter`` to decide whether
+        to run the database agent loop (data query) or stream freeform chat.
+
+        Args:
+            user_message: Raw text from the user's latest message.
+            session_id: Conversation ID used for logging and skill execution context.
+            model: Model identifier to use for the skill-match LLM call.
+
+        Returns:
+            ``OrchestratorResult`` with ``routing_decision`` set to
+            ``CALL_SKILL``, ``CLARIFY``, or ``GENERIC_ANSWER``.
+        """
         # Skip skill matching entirely if no skills are loaded
         if self._registry.list_skills():
             match_result = await self._match_skill(

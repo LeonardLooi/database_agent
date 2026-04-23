@@ -1,20 +1,16 @@
-# Start all services (build images if needed).
+# Start all services. Delegates to build.ps1 for enterprise CA/proxy support.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$scriptDir   = $PSScriptRoot
-$chatbotDir  = Split-Path -Parent $scriptDir
+$scriptDir  = $PSScriptRoot
+$chatbotDir = Split-Path -Parent $scriptDir
 
 & "$scriptDir\check_prereqs.ps1"
 
-Push-Location $chatbotDir
-try {
-    Write-Host "Building and starting services..." -ForegroundColor Cyan
-    docker-compose up --build -d
-    Write-Host ""
-    Write-Host "Stack is up. Open http://localhost in your browser." -ForegroundColor Green
-    Write-Host "Logs: docker-compose logs -f"
-    Write-Host "Stop: $scriptDir\stop.ps1"
-} finally {
-    Pop-Location
-}
+Write-Host "Building and starting services..." -ForegroundColor Cyan
+& "$chatbotDir\build.ps1"
+
+Write-Host ""
+Write-Host "Stack is up. Open http://localhost in your browser." -ForegroundColor Green
+Write-Host "Logs: docker-compose logs -f"
+Write-Host "Stop: $scriptDir\stop.ps1"

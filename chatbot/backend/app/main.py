@@ -26,10 +26,30 @@ def _configure_logging() -> None:
     )
 
 
+_INSECURE_KEY = "insecure-dev-key-replace-in-production"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _configure_logging()
     logger = structlog.get_logger()
+
+    if not settings.DEBUG and settings.SECRET_KEY == _INSECURE_KEY:
+        raise RuntimeError(
+            "SECRET_KEY is set to the insecure development default. "
+            "Set a strong SECRET_KEY in .env before running in production."
+        )
+
+    if not settings.REDIS_ENABLED:
+        logger.warning(
+            "redis_disabled",
+            message=(
+                "DataFrameStore is using in-process memory. "
+                "Multi-worker deployments will lose cross-worker DataFrame state. "
+                "Set REDIS_ENABLED=true and REDIS_URL in .env for production."
+            ),
+        )
+
     from app.services.llm.factory import LLMProviderFactory
     available = [p["provider"] for p in LLMProviderFactory.get_providers_data()]
     logger.info("startup", version=settings.APP_VERSION, provider=settings.LLM_PROVIDER, available_providers=available)

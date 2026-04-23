@@ -32,6 +32,14 @@ class SessionModelStore:
         self._redis = redis_client
 
     def set(self, conversation_id: str, model: str) -> None:
+        """Persist the active model for a conversation session.
+
+        Overwrites any previously stored value. TTL is 24 hours.
+
+        Args:
+            conversation_id: Conversation whose model preference to store.
+            model: Model identifier string (e.g. ``"claude-sonnet-4-20250514"``).
+        """
         key = _make_key(conversation_id)
         if self._redis is not None:
             self._redis.set(key, model, ex=_TTL_SECONDS)
@@ -40,6 +48,15 @@ class SessionModelStore:
         logger.info("session_model_set", conversation_id=conversation_id, model=model)
 
     def get(self, conversation_id: str) -> str | None:
+        """Return the stored model for a conversation, or ``None`` if unset or expired.
+
+        Args:
+            conversation_id: Conversation to look up.
+
+        Returns:
+            Model identifier string, or ``None`` if no preference has been set
+            or the entry has expired.
+        """
         key = _make_key(conversation_id)
         if self._redis is not None:
             raw = self._redis.get(key)

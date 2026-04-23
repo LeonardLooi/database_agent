@@ -62,6 +62,20 @@ class ClarificationState:
         original_query: str,
         clarification_type: str = "agent_question",
     ) -> None:
+        """Persist a pending clarification question for a conversation.
+
+        The next inbound message for this (user, conversation) pair will be
+        treated as the user's answer rather than a new question.
+
+        Args:
+            user_id: Authenticated user who was asked the question.
+            conversation_id: Conversation in which clarification is pending.
+            question: Text of the clarifying question shown to the user.
+            candidates: Intent candidate labels presented as selectable options.
+            original_query: The user's original message that triggered clarification.
+            clarification_type: ``"agent_question"``, ``"intent_selection"``, or
+                ``"skill_clarification"`` — controls how the next message is routed.
+        """
         key = _make_key(user_id, conversation_id)
         payload = json.dumps(
             {
@@ -80,6 +94,16 @@ class ClarificationState:
         )
 
     def get_pending(self, user_id: str, conversation_id: str) -> dict | None:
+        """Return the pending clarification payload, or ``None`` if none is active.
+
+        Args:
+            user_id: Authenticated user to check.
+            conversation_id: Conversation to check.
+
+        Returns:
+            Dict with keys ``question``, ``candidates``, ``original_query``, and
+            ``clarification_type``, or ``None`` if no clarification is pending.
+        """
         key = _make_key(user_id, conversation_id)
         raw = self._redis.get(key) if self._redis is not None else self._mem_get(key)
         if raw is None:
@@ -87,12 +111,27 @@ class ClarificationState:
         return json.loads(raw)
 
     def is_pending(self, user_id: str, conversation_id: str) -> bool:
+        """Return ``True`` if a clarification question is awaiting an answer.
+
+        Args:
+            user_id: Authenticated user to check.
+            conversation_id: Conversation to check.
+        """
         key = _make_key(user_id, conversation_id)
         if self._redis is not None:
             return bool(self._redis.exists(key))
         return self._mem_get(key) is not None
 
     def clear(self, user_id: str, conversation_id: str) -> None:
+        """Delete any pending clarification for this (user, conversation) pair.
+
+        Called immediately before routing the user's clarification answer so
+        the next message is treated as a new turn.
+
+        Args:
+            user_id: Authenticated user whose clarification to clear.
+            conversation_id: Conversation whose clarification to clear.
+        """
         key = _make_key(user_id, conversation_id)
         if self._redis is not None:
             self._redis.delete(key)

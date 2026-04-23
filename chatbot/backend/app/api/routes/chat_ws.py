@@ -123,8 +123,8 @@ async def _generate_and_send_title(
             {"type": "title", "conversation_id": conversation_id, "title": title},
             websocket,
         )
-    except Exception:
-        pass  # client disconnected before title was ready — silently drop
+    except (ConnectionResetError, RuntimeError, OSError) as exc:
+        logger.debug("title_send_skipped", reason=str(exc), conversation_id=conversation_id)
 
 
 @router.websocket("/ws/chat")
@@ -464,6 +464,23 @@ async def chat_websocket(
                                     websocket, llm_service, user_content, conv_id
                                 )
                             )
+                        continue
+
+                    if loop_result.status == "error":
+                        logger.error(
+                            "agent_loop_result_error",
+                            error=loop_result.error,
+                            user_id=user_id,
+                            conversation_id=conv_id,
+                        )
+                        await manager.send_json(
+                            {
+                                "type": "error",
+                                "message": loop_result.error or "Agent error — check server logs",
+                                "code": 500,
+                            },
+                            websocket,
+                        )
                         continue
 
                     formatter = ResponseFormatter(store)

@@ -18,6 +18,13 @@ def _uuid() -> str:
 
 
 class Conversation(Base):
+    """Chat conversation owned by a single user.
+
+    The ``messages`` relationship is loaded eagerly (``lazy="selectin"``) so that
+    fetching a conversation always includes its messages in one query round-trip.
+    Messages are deleted via cascade when the conversation is deleted.
+    """
+
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
@@ -34,6 +41,13 @@ class Conversation(Base):
 
 
 class Message(Base):
+    """A single chat turn within a conversation.
+
+    ``role`` is either ``"user"`` or ``"assistant"``. Assistant messages record
+    the ``provider`` and ``model`` used so the conversation history reflects which
+    LLM produced each response. ``token_count`` is estimated as ``len(content) // 4``.
+    """
+
     __tablename__ = "messages"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)

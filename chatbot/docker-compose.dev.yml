@@ -1,9 +1,15 @@
-version: "3.9"
 # Development overrides — hot reload for backend, volume mounts for skills.
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 services:
   backend:
+    # Run as root in dev: host-mounted source files are owned by the host user,
+    # so the non-root appuser from the production image would lack write access.
+    # The gosu entrypoint is also bypassed so there is no privilege drop.
+    user: root
+    entrypoint: ""
+    ports:
+      - "5678:5678"   # debugpy / Python debugger attach port
     volumes:
       - ./backend:/app
       - sqlite_data:/app/data

@@ -43,6 +43,14 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Yield an async database session scoped to a single request.
+
+    Rolls back the session on exception and always closes it in the finally
+    block, regardless of whether the request succeeds or fails.
+
+    Yields:
+        An open ``AsyncSession`` bound to the configured database engine.
+    """
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -54,5 +62,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def create_tables() -> None:
+    """Create all ORM-mapped tables that do not already exist.
+
+    Runs ``Base.metadata.create_all`` inside a single transaction via the
+    async engine. Called once at application startup from the FastAPI lifespan.
+    """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

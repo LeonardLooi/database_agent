@@ -1,0 +1,6 @@
+# Enforce LF line endings for files executed inside Linux containers.
+# CRLF from Windows git clients causes "bad interpreter" errors at runtime.
+*.sh        text eol=lf
+Dockerfile* text eol=lf
+docker-compose*.yml text eol=lf
+.dockerignore text eol=lf

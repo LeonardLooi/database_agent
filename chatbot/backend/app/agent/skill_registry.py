@@ -97,17 +97,33 @@ class SkillRegistry:
         logger.info("skills_watcher_started", dir=str(self._dir))
 
     async def reload(self) -> None:
+        """Re-scan the skills directory and rebuild the in-memory registry.
+
+        Called by the watchdog file-system handler whenever a ``*.yaml`` file
+        changes. Acquires an async lock so concurrent reloads do not race.
+        """
         async with self._lock:
             self._load_all()
             logger.info("skills_reloaded", count=len(self._skills))
 
     def get_skill(self, name: str) -> SkillSchema | None:
+        """Return the ``SkillSchema`` for the given name, or ``None`` if not found.
+
+        Args:
+            name: Exact skill name as declared in the YAML ``name`` field.
+        """
         return self._skills.get(name)
 
     def list_skills(self) -> list[str]:
+        """Return the names of all currently loaded skills."""
         return list(self._skills)
 
     def get_all_descriptions(self) -> str:
+        """Return a newline-separated list of skill names and descriptions.
+
+        Used as the candidate block in the skill-match LLM prompt. Returns the
+        literal string ``"(no skills loaded)"`` when the registry is empty.
+        """
         if not self._skills:
             return "(no skills loaded)"
         lines = [

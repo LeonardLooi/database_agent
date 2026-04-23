@@ -21,12 +21,24 @@ class RoutingDecision(str, enum.Enum):
 
 @dataclass
 class SkillResult:
-    """Result of a YAML-driven skill execution via execute_skill().
+    """Result of a YAML-driven skill execution via ``execute_skill()``.
 
-    Intentionally separate from AgentLoopResult:
-    - SkillResult  → YAML skill execution (NLP, document analysis, model-agnostic)
-    - AgentLoopResult → database agent tool-use loop (SQL queries, data retrieval)
-    Merging them would require many optional fields and obscure which flow produced the result.
+    Intentionally separate from ``AgentLoopResult``:
+
+    - ``SkillResult`` — YAML skill execution (NLP, document analysis, model-agnostic).
+    - ``AgentLoopResult`` — database agent tool-use loop (SQL queries, data retrieval).
+
+    Merging them would require many optional fields and obscure which flow produced
+    the result.
+
+    Attributes:
+        output: Raw LLM response text.
+        skill_name: Name of the YAML skill that was executed.
+        model_used: Model identifier string (e.g. ``"claude-sonnet-4-20250514"``).
+        confidence: Routing confidence score (0.0–1.0) from the skill-match call.
+        routing_decision: Always ``RoutingDecision.CALL_SKILL`` for completed results.
+        parsed_output: JSON-parsed ``output`` when the skill's ``output_format``
+            specifies JSON; ``None`` when the output is not valid JSON.
     """
 
     output: str
@@ -39,13 +51,28 @@ class SkillResult:
 
 @dataclass
 class AgentLoopResult:
+    """Result of a provider's ``run_agent_loop()`` tool-use execution.
+
+    Attributes:
+        explanation: LLM-generated natural-language explanation of the query result.
+        final_label: Label of the primary DataFrame in ``DataFrameStore`` to render.
+            Empty string means the formatter will use the last stored label.
+        sql_used: Ordered list of SQL strings executed during the loop.
+        python_used: Python code string used for DataFrame operations (currently
+            populated by ``combine_dataframes``).
+        truncated: ``True`` if any result was capped at ``MAX_DATAFRAME_ROWS``.
+        row_count: Total row count of the primary result DataFrame.
+        status: One of ``"completed"``, ``"clarification_pending"``, or ``"error"``.
+        error: Error message string when ``status == "error"``; empty otherwise.
+    """
+
     explanation: str = ""
     final_label: str = ""
     sql_used: list[str] = field(default_factory=list)
     python_used: str = ""
     truncated: bool = False
     row_count: int = 0
-    status: str = "completed"  # "completed" | "clarification_pending" | "error"
+    status: str = "completed"
     error: str = ""
 
 

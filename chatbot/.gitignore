@@ -1,0 +1,6 @@
+# Enterprise build config — never commit
+.env.build
+certs/*.crt
+certs/*.pem
+certs/*.key
+certs/*.der

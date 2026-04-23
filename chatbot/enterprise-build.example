@@ -1,0 +1,27 @@
+# Enterprise build configuration template.
+# Copy this file to .env.build and fill in your values — .env.build is gitignored.
+#
+#   cp enterprise-build.example .env.build          (Linux / Mac)
+#   Copy-Item enterprise-build.example .env.build   (PowerShell)
+#
+# ── Corporate CA certificate ───────────────────────────────────────────────────
+# Do NOT paste cert content here — multiline values break shell sourcing.
+# Instead, just drop your corporate CA cert file here:
+#
+#   certs/corp-ca.crt
+#
+# build.sh and build.ps1 detect it automatically. No further config needed.
+#
+# To export from Windows certificate store (PowerShell, run as admin):
+#   $cert = Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -like "*YourCorpCA*" }
+#   Export-Certificate -Cert $cert -FilePath certs\corp-ca.crt -Type CERT
+#   certutil -encode certs\corp-ca.crt certs\corp-ca.pem && Move-Item certs\corp-ca.pem certs\corp-ca.crt -Force
+#
+# To export from macOS Keychain:
+#   Open Keychain Access → find your corporate CA → File → Export → save as .pem → rename to certs/corp-ca.crt
+#
+# ── Proxy settings ─────────────────────────────────────────────────────────────
+# Leave blank if your machine connects directly (no proxy).
+HTTP_PROXY=
+HTTPS_PROXY=
+NO_PROXY=localhost,127.0.0.1

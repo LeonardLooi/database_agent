@@ -155,7 +155,7 @@ class SnowflakeConnector(BaseConnector):
                 df = self.execute_query(generated_sql)
                 return {"sql": generated_sql, "explanation": explanation, "df": df, "error": ""}
             except Exception as exec_exc:
-                logger.error("cortex_analyst_exec_error", error=str(exec_exc))
+                logger.error("cortex_analyst_exec_error", error=str(exec_exc), sql_preview=generated_sql[:120])
                 return {
                     "sql": generated_sql,
                     "explanation": explanation,
