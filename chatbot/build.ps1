@@ -13,7 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # -- Detect compose command (v2 plugin preferred over v1 standalone) -------------
-$null = docker compose version 2>&1
+docker compose version 2>$null | Out-Null
 if ($LASTEXITCODE -eq 0) {
     function dc { docker compose @args }
 } else {
