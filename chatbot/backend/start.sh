@@ -3,7 +3,7 @@
 # instance on the target port first.
 set -euo pipefail
 
-PORT="${1:-8000}"
+PORT="${1:-8080}"
 APP="app.main:app"
 
 # Always run from the directory this script lives in

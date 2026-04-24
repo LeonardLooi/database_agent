@@ -19,7 +19,7 @@ services:
     command: >
       uvicorn app.main:app
       --host 0.0.0.0
-      --port 8000
+      --port 8080
       --reload
       --reload-dir /app/app
 
@@ -28,4 +28,4 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     environment:
-      - BACKEND_URL=http://backend:8000
+      - BACKEND_URL=http://backend:8080

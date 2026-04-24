@@ -1,734 +1,408 @@
-# Database Agent Chatbot
+# Database Agent AI Chatbot
 
-![License](https://img.shields.io/badge/license-MIT-blue)
-![Python](https://img.shields.io/badge/python-3.12+-blue)
-![Angular](https://img.shields.io/badge/angular-21.x-red)
-![FastAPI](https://img.shields.io/badge/fastapi-latest-green)
+Python 3.11+, FastAPI, WebSockets, SQLite/PostgreSQL, Redis
 
-A production-grade, full-stack AI chatbot with an **agentic data query engine**. The backend (Python/FastAPI) orchestrates multiple LLM providers — Anthropic, OpenAI, Google Gemini (via ADK), and AWS Bedrock — and can autonomously query enterprise databases (Snowflake, BigQuery, MSSQL), combine results across sources, and return structured responses with tables, CSV exports, and the SQL that was run. The Angular 21 frontend streams responses over WebSocket in real time.
+A production-ready AI chatbot that connects to Snowflake, BigQuery, and MSSQL databases.
+Users ask natural language questions; the agent writes and executes SQL, then returns results
+as a markdown table, CSV download, and an LLM-generated explanation.
 
----
-
-## Table of Contents
-
-- [Features](#features)
-- [Architecture Overview](#architecture-overview)
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Agentic Data Query Flow](#agentic-data-query-flow)
-- [YAML Skill System](#yaml-skill-system)
-- [Sessions API](#sessions-api)
-- [WebSocket Protocol](#websocket-protocol)
-- [Database Connectors](#database-connectors)
-- [Production Deployment (Docker)](#production-deployment-docker)
-- [Testing](#testing)
-- [Contributing](#contributing)
-
----
+Supports four LLM backends — Anthropic Claude, OpenAI GPT, Google Gemini, and AWS Bedrock Nova —
+with runtime model switching per conversation session.
 
 ## Features
 
-| Feature | Detail |
-|---------|--------|
-| **Multi-provider LLM** | Anthropic Claude, OpenAI GPT, Google Gemini (ADK), AWS Bedrock (Strands Agent) — only providers with configured API keys appear in the UI |
-| **Agentic data querying** | Autonomous tool-calling loop queries Snowflake, BigQuery, and MSSQL; combines DataFrames across sources |
-| **Intent routing** | `QueryRouter` classifies each message as data query or freeform via keyword rules + LLM fallback |
-| **Clarification flow** | Ambiguous queries suspend the agent loop and ask the user to pick an intent; loop resumes on reply |
-| **Real-time streaming** | Freeform responses stream token-by-token over WebSocket; data responses stream progress frames |
-| **Structured agent responses** | Agent replies include NL explanation, Markdown table, CSV download, and executed SQL |
-| **Snowflake Cortex** | Native support for Cortex ANALYST (semantic-model SQL generation), COMPLETE, and SUMMARIZE |
-| **DataFrame session cache** | Redis-backed (in-memory fallback) session store for intermediate query results; TTL-scoped per conversation |
-| **JWT authentication** | 30-day token expiry, bearer-token WebSocket auth |
-| **Persistent history** | Conversations and messages stored in SQLite (swappable to PostgreSQL via env var) |
-| **YAML skill system** | Extensible skill registry loads `*.yaml` files at startup; `ChatOrchestrator` routes messages to skills before falling back to the database agent or freeform chat; hot-reload via watchdog in dev mode |
-| **Per-session model switching** | `PATCH /api/sessions/{id}/model` persists the active model per conversation (Redis-backed, 24-hour TTL, in-memory fallback) |
-| **Docker-native** | Single `docker compose up --build` for full local environment |
-| **GCP Cloud Run ready** | Backend and frontend each ship as a Docker image; Cloud SQL optional for persistent storage |
-
----
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Browser (Angular 21)                         │
-│  ┌──────────┐  ┌─────────────┐  ┌────────────┐  ┌──────────────┐  │
-│  │  Sidebar │  │ Chat Window │  │ Chat Input │  │Model Selector│  │
-│  └──────────┘  └─────────────┘  └────────────┘  └──────────────┘  │
-│        │              │                │                │           │
-│        └──────────────┴────────────────┴────────────────┘          │
-│                              HTTP + WebSocket (JWT)                 │
-└────────────────────────────────┬────────────────────────────────────┘
-                                 │
-┌────────────────────────────────▼────────────────────────────────────┐
-│                     FastAPI Backend (Python 3.12+)                  │
-│                                                                     │
-│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────────────┐  │
-│  │  /auth       │  │  /conversations  │  │  /ws/chat (WS)       │  │
-│  │  JWT login   │  │  CRUD history    │  │  Orchestration hub   │  │
-│  └──────────────┘  └──────────────────┘  └──────────┬───────────┘  │
-│                                                      │              │
-│  ┌───────────────────────────────────────────────────▼───────────┐ │
-│  │                    ChatOrchestrator                           │ │
-│  │  SkillRegistry (YAML) → LLM skill-match → confidence gate    │ │
-│  │  CALL_SKILL ≥0.85  ·  CLARIFY 0.50–0.85  ·  GENERIC_ANSWER  │ │
-│  └──┬──────────────────────────────────────────────┬────────────┘ │
-│     │ skill matched                                 │ no match     │
-│  ┌──▼──────────────┐  ┌────────────────────────────▼───────────┐  │
-│  │SkillPromptBuild.│  │            QueryRouter                 │  │
-│  │ YAML→LLM prompt │  │ keyword pre-filter → LLM classify      │  │
-│  └─────────────────┘  └──────────────┬─────────────┬──────────┘  │
-│                                       │ data query  │ freeform    │
-│  ┌──────────────────▼──────────────┐  ┌──────▼──────────────────┐ │
-│  │    Provider Agent Loop          │  │   LLMService.stream()   │ │
-│  │  ┌────────────────────────────┐ │  │   Token delta frames    │ │
-│  │  │ SharedToolkit              │ │  └─────────────────────────┘ │
-│  │  │  · query_snowflake         │ │                              │
-│  │  │  · cortex_analyst          │ │                              │
-│  │  │  · query_bigquery          │ │                              │
-│  │  │  · query_mssql             │ │                              │
-│  │  │  · combine_dataframes      │ │                              │
-│  │  │  · ask_clarification       │ │                              │
-│  │  └───────────┬────────────────┘ │                              │
-│  │              │                  │                              │
-│  │  ┌───────────▼────────────────┐ │                              │
-│  │  │ DataFrameStore (Redis/mem) │ │                              │
-│  │  │ ClarificationState (Redis) │ │                              │
-│  │  └────────────────────────────┘ │                              │
-│  └─────────────────────────────────┘                              │
-│                                                                    │
-│  ┌────────────────────────────────────────────────────────────┐   │
-│  │  LLM Providers (BaseLLMProvider)                           │   │
-│  │  Anthropic (tool_use) │ OpenAI (function_calling)          │   │
-│  │  Gemini (Google ADK)  │ AWS (Strands Agent)                │   │
-│  └────────────────────────────────────────────────────────────┘   │
-│                                                                    │
-│  ┌────────────────────────────────────────────────────────────┐   │
-│  │  DB Connectors (asyncio.to_thread wrapped)                 │   │
-│  │  SnowflakeConnector │ BigQueryConnector │ MSSQLConnector   │   │
-│  └────────────────────────────────────────────────────────────┘   │
-│                                                                    │
-│  SQLite / PostgreSQL (conversations + messages)                    │
-│  Redis (DataFrameStore + ClarificationState)                       │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-See [`chatbot/docs/ARCHITECTURE.md`](chatbot/docs/ARCHITECTURE.md) for detailed component descriptions, Mermaid diagrams, data flow walkthroughs, and database schemas.
-
----
-
-## Project Structure
-
-```
-database_agent/
-├── chatbot/
-│   ├── backend/                  # Python FastAPI backend
-│   │   ├── app/
-│   │   │   ├── agent/            # Agentic orchestration layer
-│   │   │   │   ├── connectors/   # Snowflake, BigQuery, MSSQL adapters
-│   │   │   │   ├── tools/        # query_tools, clarification_tools, combine_tools
-│   │   │   │   ├── orchestrator.py        # ChatOrchestrator (skill → DB agent → chat)
-│   │   │   │   ├── routing.py             # Per-provider confidence extraction
-│   │   │   │   ├── skill_registry.py      # YAML skill loader with hot-reload
-│   │   │   │   ├── skill_prompt_builder.py  # YAML → LLM prompt assembly
-│   │   │   │   ├── session_model_store.py   # Per-conversation model preference
-│   │   │   │   ├── dataframe_store.py
-│   │   │   │   ├── clarification_state.py
-│   │   │   │   ├── intent_loader.py
-│   │   │   │   ├── query_router.py
-│   │   │   │   ├── response_formatter.py
-│   │   │   │   └── shared_toolkit.py
-│   │   │   ├── skills/           # YAML skill definitions (*.yaml, hot-reloaded)
-│   │   │   ├── api/routes/       # auth, chat_ws, conversations, sessions, health
-│   │   │   ├── core/             # config, database, security, ws_manager
-│   │   │   ├── models/           # SQLAlchemy ORM (Conversation, Message)
-│   │   │   ├── schemas/          # Pydantic v2 schemas (ws_messages, conversation)
-│   │   │   ├── services/llm/     # BaseLLMProvider + Anthropic/OpenAI/Gemini/AWS
-│   │   │   └── main.py
-│   │   ├── config/
-│   │   │   ├── intents/          # YAML intent definitions
-│   │   │   └── prompts/          # Markdown prompt templates
-│   │   ├── tests/                # pytest suite (agent loop, clarification, combine, router)
-│   │   ├── alembic/              # DB migrations
-│   │   ├── Dockerfile
-│   │   ├── requirements.txt
-│   │   └── start.sh
-│   ├── frontend/                 # Angular 21 SPA
-│   │   ├── src/app/
-│   │   │   ├── core/services/    # auth, chat-ws, conversation, providers, theme
-│   │   │   ├── features/         # chat/, sidebar/
-│   │   │   └── shared/           # components/, models/
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   ├── docs/
-│   │   ├── ARCHITECTURE.md       # Deep-dive architecture docs + Mermaid diagrams
-│   │   └── plans/                # Approved MVP implementation plans
-│   ├── docker-compose.yml
-│   └── env.template
-├── .claude/                      # Claude Code agents, skills, hooks, rules
-├── blackbox/                     # Append-only session audit logs
-├── CLAUDE.md                     # Developer workflow guide
-└── README.md                     # This file
-```
-
----
+- Natural-language → SQL execution across Snowflake, BigQuery, and MSSQL
+- Four LLM providers (Anthropic, OpenAI, Gemini, AWS Bedrock) with per-session model switching
+- WebSocket streaming: `delta` / `done` / `error` / `agent_response` frame protocol
+- YAML skill system for NLP tasks — add skills without touching Python code
+- Intent routing with keyword pre-filter and clarification for ambiguous queries
+- Session DataFrame store backed by Redis (in-process dict fallback for dev)
+- Snowflake Cortex integration: ANALYST (NL→SQL), COMPLETE, and SUMMARIZE
+- JWT auth with anonymous guest tokens and named-user tokens
+- Four-service Docker Compose stack: nginx → Angular frontend → FastAPI backend → Redis
 
 ## Prerequisites
 
-**Docker path (recommended):**
-- Docker Desktop or Docker Engine with Compose v2
+- Python 3.11+ (backend only)
+- Docker + Docker Compose (recommended for full-stack deployment)
+- At least one LLM API key: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or GCP/AWS credentials
 
-**Local development path:**
-- Python 3.12+
-- Node.js 20+ and npm 10+
-- At least one LLM API key (Anthropic, OpenAI, Google, or AWS)
-
-**Optional (for database connectors):**
-- Snowflake account with `ACCOUNTADMIN` or equivalent role
-- Google Cloud credentials (`gcloud auth application-default login`) for BigQuery
-- SQL Server 2019+ with ODBC Driver 18 for MSSQL
-
----
-
-## Quick Start
-
-### Option A — Docker Compose (recommended)
+## Quick Start (Docker Compose)
 
 ```bash
 cd chatbot
-cp env.template .env          # then edit .env — set at least one LLM API key and SECRET_KEY
-docker compose up --build
+cp env.template .env       # fill in API keys and database credentials
+docker-compose up -d       # starts nginx, frontend, backend, redis
 ```
 
-- Frontend: http://localhost:4200
-- Backend API docs: http://localhost:8000/docs _(only when `DEBUG=true`)_
+The app is available at `https://localhost`. The self-signed certificate will trigger a browser warning on first visit — accept it to proceed (expected for local dev).
 
-### Option B — Local (no Docker)
+## Local Backend Development
 
 ```bash
-# 1. Backend
 cd chatbot/backend
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp ../env.template ../.env    # edit .env
-
-# Recommended start script (handles port cleanup):
-./start.sh
-# Or manually:
-uvicorn app.main:app --reload --port 8000
-
-# 2. Frontend (new terminal)
-cd chatbot/frontend
-npm install
-npm start
+cp ../env.template .env    # fill in API keys
+uvicorn app.main:app --reload --port 8080
 ```
 
-- Frontend: http://localhost:4200
-- Backend: http://localhost:8000
-
----
+API docs are available at `http://localhost:8080/docs` when `DEBUG=true`.
 
 ## Configuration
 
-Copy `chatbot/env.template` to `chatbot/.env`. At minimum, set `SECRET_KEY` and one LLM API key.
+Copy `env.template` to `.env` and fill in the values. All variables are optional
+except those required by your chosen LLM provider and database connectors.
 
-### Core Settings
+### LLM Providers
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `LLM_PROVIDER` | Default provider: `anthropic`, `openai`, `gemini`, `aws` | Yes |
+| `ANTHROPIC_API_KEY` | Anthropic API key (Claude models) | If using Anthropic |
+| `OPENAI_API_KEY` | OpenAI API key (GPT models) | If using OpenAI |
+| `GCP_IMPERSONATE_SA` | GCP service account email to impersonate (Gemini, Priority 1) | If using Gemini |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to GCP service account JSON (Gemini, Priority 2) | If using Gemini |
+| `GOOGLE_CLOUD_PROJECT` | GCP project ID (Gemini, ADK, BigQuery) | If using Gemini/BigQuery |
+| `AWS_REGION` | AWS region for Bedrock (default: `us-east-1`) | If using AWS |
+| `AWS_ACCESS_KEY_ID` | AWS access key (falls back to boto3 credential chain) | If using AWS |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key | If using AWS |
+
+### Auth
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `SECRET_KEY` | JWT signing secret — generate with `openssl rand -hex 32` | dev placeholder | **Yes** |
-| `LLM_PROVIDER` | Default provider: `anthropic` \| `openai` \| `gemini` \| `aws` | first available | No |
-| `DATABASE_URL` | SQLAlchemy async URL | `sqlite+aiosqlite:///./data/chatbot.db` | No |
-| `DEBUG` | Enable `/docs` and verbose logging | `false` | No |
-| `CORS_ORIGIN` | Allowed CORS origin for frontend | `http://localhost:4200` | No |
-| `WS_HEARTBEAT_INTERVAL` | WebSocket ping interval in seconds | `25` | No |
-| `APP_VERSION` | Version string returned by `/health` | `1.0.0` | No |
+| `SECRET_KEY` | JWT signing secret — generate with `openssl rand -hex 32` | insecure default | **Yes in prod** |
+| `ALGORITHM` | JWT algorithm | `HS256` | No |
+| `ACCESS_TOKEN_EXPIRE_DAYS` | JWT lifetime in days | `30` | No |
 
-### LLM Provider Keys
+The app **refuses to start** in production (`DEBUG=false`) if `SECRET_KEY` is the default value.
 
-Providers without configured credentials are automatically hidden in the model selector.
-
-| Variable | Provider | Notes |
-|----------|----------|-------|
-| `ANTHROPIC_API_KEY` | Claude (Anthropic) | `sk-ant-...` |
-| `OPENAI_API_KEY` | GPT (OpenAI) | `sk-...` |
-| `AWS_ACCESS_KEY_ID` | Bedrock (AWS) | Or use IAM role / `~/.aws/credentials` |
-| `AWS_SECRET_ACCESS_KEY` | Bedrock (AWS) | — |
-| `AWS_REGION` | Bedrock region | `us-east-1` |
-
-### GCP / Gemini Authentication (ADC — no API key)
-
-Gemini uses Application Default Credentials (ADC), not a Google AI Studio API key.
-Three auth paths are tried in priority order:
-
-**Priority 1 — Impersonation (production recommended)**
-
-```bash
-# Set in .env or as a system environment variable:
-GCP_IMPERSONATE_SA=shared-sa@your-project.iam.gserviceaccount.com
-```
-
-The caller's ambient identity (Cloud Run SA, Workload Identity, or local gcloud)
-impersonates the shared service account. The caller must have
-`roles/iam.serviceAccountTokenCreator` on `GCP_IMPERSONATE_SA`.
-
-No key file is needed. Combine with local gcloud for developer machines:
-
-```bash
-gcloud auth application-default login
-```
-
-**Priority 2 — Service account key file (local dev fallback)**
-
-```bash
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
-# Docker: mount the file and set the path inside the container.
-```
-
-**Priority 3 — Ambient ADC (last resort — logs a WARNING)**
-
-```bash
-gcloud auth application-default login
-# No env var required. Identity is whatever gcloud resolved.
-# WARNING: the identity may not be the intended shared SA.
-```
-
-If all three paths fail, the backend raises `AuthConfigError` at startup with an
-actionable remediation message in the logs.
-
-### Redis (Session State)
-
-Redis is optional. When disabled, DataFrameStore uses an in-process dict (single-worker only).
+### Database (Chat History)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `REDIS_ENABLED` | Enable Redis | `false` |
-| `REDIS_URL` | Connection URL | `redis://localhost:6379/0` |
-| `DATAFRAME_TTL_SECONDS` | DataFrame cache TTL | `3600` |
-| `CLARIFICATION_TTL_SECONDS` | Clarification state timeout | `300` |
+| `DATABASE_URL` | SQLAlchemy async URL | `sqlite+aiosqlite:///./data/chatbot.db` |
+
+For production, use an async PostgreSQL URL: `postgresql+asyncpg://user:pass@host/db`.
+
+### Redis (Session Store)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `REDIS_ENABLED` | Enable Redis-backed session stores | `false` |
+| `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` |
+
+**Required for multi-worker deployments.** Without Redis, DataFrames and clarification state
+are stored in the worker process and are invisible to other workers.
+
+### Snowflake Connector
+
+| Variable | Description |
+|----------|-------------|
+| `SNOWFLAKE_ACCOUNT` | Account identifier (e.g. `xy12345.us-east-1`) |
+| `SNOWFLAKE_USER` | Snowflake username |
+| `SNOWFLAKE_PASSWORD` | Snowflake password |
+| `SNOWFLAKE_WAREHOUSE` | Default compute warehouse |
+| `SNOWFLAKE_DATABASE` | Default database |
+| `SNOWFLAKE_SCHEMA` | Default schema (default: `PUBLIC`) |
+| `SNOWFLAKE_ROLE` | Optional role override |
+
+### BigQuery Connector
+
+| Variable | Description |
+|----------|-------------|
+| `BIGQUERY_PROJECT_ID` | GCP project ID for query billing |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON (shared with Gemini auth) |
+
+### MSSQL Connector
+
+| Variable | Description |
+|----------|-------------|
+| `MSSQL_SERVER` | SQL Server hostname (e.g. `server.database.windows.net`) |
+| `MSSQL_DATABASE` | Database name |
+| `MSSQL_USERNAME` | SQL Server username |
+| `MSSQL_PASSWORD` | SQL Server password |
+| `MSSQL_DRIVER` | ODBC driver name (default: `ODBC Driver 18 for SQL Server`) |
 
 ### Agent Limits
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MAX_TOOL_CALLS` | Max tool-call iterations per agent loop | `10` |
-| `MAX_DATAFRAME_ROWS` | Max rows fetched per DB query | `10000` |
-| `INTENT_DIR` | Path to YAML intent definitions | `./config/intents` |
-| `PROMPT_DIR` | Path to Markdown prompt templates | `./config/prompts` |
-| `SKILLS_DIR` | Path to YAML skill definitions loaded by `SkillRegistry` | `./app/skills` |
+| `MAX_TOOL_CALLS` | Maximum tool calls per agent loop turn | `10` |
+| `MAX_DATAFRAME_ROWS` | Row cap for all query results | `10000` |
+| `DATAFRAME_TTL_SECONDS` | DataFrame session TTL | `3600` |
+| `CLARIFICATION_TTL_SECONDS` | Pending clarification TTL | `300` |
 
-### Database Connectors
-
-Leave connector variables empty to disable the connector — it simply won't be available to the agent.
-
-**Snowflake:**
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SNOWFLAKE_ACCOUNT` | Account identifier (e.g. `xy12345.us-east-1`) | — |
-| `SNOWFLAKE_USER` | Username | — |
-| `SNOWFLAKE_PASSWORD` | Password | — |
-| `SNOWFLAKE_WAREHOUSE` | Default warehouse | `COMPUTE_WH` |
-| `SNOWFLAKE_DATABASE` | Default database | — |
-| `SNOWFLAKE_SCHEMA` | Default schema | `PUBLIC` |
-| `SNOWFLAKE_ROLE` | Role override | — |
-
-> **Note:** Cortex ANALYST and Cortex COMPLETE require Snowflake Enterprise tier or higher.
-
-**BigQuery:**
-
-| Variable | Description |
-|----------|-------------|
-| `BIGQUERY_PROJECT_ID` | GCP project ID |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON (optional if using ADC) |
-
-**MSSQL:**
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MSSQL_SERVER` | SQL Server host | — |
-| `MSSQL_DATABASE` | Database name | — |
-| `MSSQL_USERNAME` | Username | — |
-| `MSSQL_PASSWORD` | Password | — |
-| `MSSQL_DRIVER` | ODBC driver name | `ODBC Driver 18 for SQL Server` |
-
----
-
-## Agentic Data Query Flow
-
-When a user sends a message, the `QueryRouter` classifies it as either a **data query** or a **freeform question**.
-
-### Freeform path
+## Architecture
 
 ```
-User message → QueryRouter (freeform) → LLMService.stream() → WsDelta frames (tokens) → WsDone
+Browser (WebSocket wss://host/ws/chat?token=<jwt>)
+    │
+    ▼
+nginx (port 443)  ──────────────────────────  Angular frontend (port 80)
+    │
+    ▼
+FastAPI backend (port 8080, internal only)
+    │
+    ├─ ChatOrchestrator ──► SkillRegistry (YAML skills, hot-reload)
+    │       │
+    │       └─► QueryRouter (keyword pre-filter → intent match)
+    │
+    ├─ LLMProviderFactory ──► AnthropicProvider / OpenAIProvider /
+    │                         GeminiProvider (ADK) / AWSBedrockProvider (Strands)
+    │
+    ├─ SharedToolkit ──► query_snowflake / query_bigquery / query_mssql /
+    │                    cortex_analyst / combine_dataframes / ask_clarification
+    │
+    ├─ DataFrameStore  (Redis │ in-process dict)
+    ├─ ClarificationState (Redis │ in-process dict)
+    └─ SessionModelStore  (Redis │ in-process dict)
 ```
 
-### Data query path
+### WebSocket Message Protocol
 
-```
-User message → QueryRouter (data query)
-  → Provider.run_agent_loop()
-      ├─ Iteration 1: LLM calls query_snowflake("SELECT revenue BY month...")
-      │   └─ SnowflakeConnector → DataFrame → DataFrameStore.set("sales_data")
-      ├─ Iteration 2: LLM calls query_snowflake("SELECT product_name...")
-      │   └─ DataFrameStore.set("products")
-      ├─ Iteration 3: LLM calls combine_dataframes("sales_data", "products", join_key="product_id")
-      │   └─ pandas merge → DataFrameStore.set("combined")
-      └─ Final: LLM generates natural language explanation
-  → ResponseFormatter builds WsAgentResponse:
-      ├─ explanation: "Revenue increased 23% YoY, led by Product A..."
-      ├─ table_md: Markdown table (first 100 rows)
-      ├─ csv: Full CSV export
-      ├─ sql_used: ["SELECT...", "SELECT..."]
-      └─ python_used: "df.merge(sales, products, on='product_id')"
-```
+The client maintains a single persistent WebSocket connection. All messages are JSON.
 
-### Clarification flow
+**Incoming (client → server):**
 
-When the `QueryRouter` cannot confidently route a query (confidence < threshold), it suspends the agent loop and asks the user to pick an intent:
+| `type` | Required fields | Description |
+|--------|----------------|-------------|
+| `message` | `messages`, optional `model`, `temperature`, `conversation_id` | Send a chat turn |
+| `ping` | — | Keepalive; server replies with `pong` |
 
-```
-Ambiguous message → QueryRouter (confidence=0.45, candidates=["Sales","Inventory","CRM"])
-  → ClarificationState.save() → WsClarificationRequest frame → UI shows choice buttons
-  → User picks "Sales Report"
-  → ClarificationState.get() → resume agent loop with selected intent
-  → Normal data query path from here
-```
+**Outgoing (server → client):**
 
----
+| `type` | Fields | When |
+|--------|--------|------|
+| `providers` | `data: [{provider, models, default_model}]` | On connect |
+| `delta` | `content` | Each streaming token (freeform mode) |
+| `done` | `conversation_id`, `token_count`, `provider`, `model` | End of freeform stream |
+| `agent_response` | `explanation`, `table_md`, `csv`, `sql_used`, `row_count`, `truncated` | End of agent loop |
+| `clarification_request` | `message`, `candidates` | Agent needs user input |
+| `title` | `conversation_id`, `title` | First message only, async |
+| `error` | `message`, `code` | Any error condition |
+| `pong` | — | Reply to ping |
 
-## YAML Skill System
-
-The `ChatOrchestrator` sits in front of every WebSocket message. Before falling back to the database agent or freeform chat, it tries to match the user message against all loaded skills using the active LLM provider.
-
-### Routing decision tree
+### Routing Flow
 
 ```
 User message
-  → ChatOrchestrator._match_skill()  (LLM rates confidence 0.0–1.0)
-      ├─ confidence ≥ 0.85  → CALL_SKILL: execute skill, return SkillResult
-      ├─ confidence 0.50–0.84 → CLARIFY: ask user to confirm intent
-      └─ confidence < 0.50  → GENERIC_ANSWER:
-              ├─ QueryRouter says data query → Provider agent loop (DB tools)
-              └─ otherwise → LLMService.stream() (freeform)
+    │
+    ├─ SkillRegistry has skills?
+    │       YES → LLM skill-match (confidence 0–1)
+    │               ≥ 0.85 → execute_skill() → done frame
+    │               0.50–0.85 → clarification_request frame
+    │               < 0.50 → fall through
+    │
+    ├─ QueryRouter.is_data_query() → keyword match
+    │       YES → estimate_intent() → ambiguous? → clarification_request
+    │             single clear intent → run_agent_loop() → agent_response
+    │       NO  → stream() → delta + done
+    │
+    └─ Clarification pending for this session?
+            YES → resume at the clarification type branch above
 ```
 
-### Adding a skill
+### Adding a New YAML Skill
 
-Drop a YAML file into `chatbot/backend/app/skills/`. It is hot-reloaded at runtime (watchdog must be installed):
+Create `backend/app/skills/<skill-name>.yaml`:
 
 ```yaml
-name: my_skill
-description: >
-  One sentence describing what this skill does — the LLM reads this to decide whether to route here.
+name: summarise_document
+description: Summarise a provided document into key bullet points.
 instructions: |
-  You are an expert at… (full system prompt for the skill executor)
+  You are a document summariser. The user will provide a document.
+  Return a JSON object with a "bullets" array of up to 5 short strings.
 parameters:
-  input_text:
-    type: string
-    required: true
-    description: The text to process
+  max_bullets:
+    type: integer
+    required: false
+    default: 5
+    description: Maximum number of bullet points.
 output_format: |
-  {"result": "...", "confidence": 0.0}
-tags: [analysis, text]
+  {"bullets": ["point 1", "point 2"]}
+tags: [nlp, summarisation]
 ```
 
-| Field | Required | Purpose |
-|-------|----------|---------|
-| `name` | Yes | Unique skill identifier (used in logs and routing) |
-| `description` | Yes | One sentence read by the LLM skill-matcher |
-| `instructions` | Yes | Full system prompt executed by the active provider |
-| `parameters` | No | Named inputs extracted from the user message |
-| `output_format` | No | JSON schema the LLM must follow in its response |
-| `tags` | No | Reserved for future tag-based pre-filtering (>30 skills) |
+The SkillRegistry picks up the file automatically (watchdog hot-reload in dev, restart in prod).
 
-### Confidence signals by provider
+### Adding a New Intent (Database Query)
 
-| Provider | Signal | Optional enhancement |
-|----------|--------|---------------------|
-| Anthropic | Self-reported float in JSON | Follow-up self-eval prompt (`ENABLE_ANTHROPIC_SELF_EVAL=true`) |
-| OpenAI | Self-reported float in JSON | logprobs averaging (`ENABLE_LOGPROB_CONFIDENCE=true`) |
-| Gemini | Self-reported float, or keyword-overlap heuristic (fallback when 0.0) | — |
+Create `backend/config/intents/<intent-name>.yaml`:
 
----
-
-## Sessions API
-
-| Endpoint | Auth | Purpose |
-|----------|------|---------|
-| `PATCH /api/sessions/{session_id}/model` | Bearer JWT (query param `?token=`) | Switch the active model mid-conversation without losing history |
-
-**Request body:**
-```json
-{ "model": "claude-opus-4-7" }
+```yaml
+intents:
+  - name: monthly_sales
+    description: Monthly sales revenue by product category.
+    keywords: [sales, revenue, monthly, category]
+    connectors:
+      - type: snowflake
+        warehouse: COMPUTE_WH
+        database: SALES_DB
+        schema: PUBLIC
+    requires_combine: false
 ```
 
-**Response:**
-```json
-{ "model": "claude-opus-4-7", "provider": "anthropic", "session_id": "..." }
-```
+## REST API
 
-The preference is persisted in Redis (or in-process dict) with a 24-hour TTL.
-
----
-
-## WebSocket Protocol
-
-All communication with `/ws/chat` uses JSON frames validated by Pydantic schemas.
-
-**Connection:** `ws://host/ws/chat?token=<jwt_token>`
-
-### Incoming frames (Client → Backend)
-
-| `type` | Payload | Purpose |
-|--------|---------|---------|
-| `message` | `content`, `model`, `provider`, `conversation_id` | Send chat message |
-| `ping` | — | Keepalive |
-
-### Outgoing frames (Backend → Client)
-
-| `type` | Payload | Trigger |
-|--------|---------|---------|
-| `providers` | `providers: [{id, name, models[]}]` | On connection — list available LLM providers |
-| `delta` | `content: string` | Streaming token (freeform path) |
-| `done` | `token_count, provider, model` | End of freeform stream |
-| `agent_progress` | `step, total, message` | Progress during agent loop |
-| `agent_response` | `explanation, table_md, csv, sql_used, python_used, row_count, truncated` | Final agent answer |
-| `clarification_request` | `message, candidates: string[]` | Agent needs user to disambiguate intent |
-| `title` | `title: string` | Auto-generated conversation title |
-| `error` | `message, code` | Error with recoverable code |
-| `pong` | — | Response to `ping` |
-
----
-
-## Database Connectors
-
-All connectors wrap synchronous client libraries in `asyncio.to_thread()` for non-blocking execution.
-
-| Connector | Authentication | Notes |
-|-----------|---------------|-------|
-| **Snowflake** | Username + password | Also supports Cortex ANALYST (semantic-model → SQL), COMPLETE, SUMMARIZE |
-| **BigQuery** | Application Default Credentials (ADC) or service account JSON | Requires `BIGQUERY_PROJECT_ID` |
-| **MSSQL** | Username + password via pyodbc | Requires ODBC Driver 18 installed; Dockerfile installs it before pip |
-
-### Supported agent tools
-
-| Tool | Description |
-|------|-------------|
-| `query_snowflake(sql, warehouse, database, schema)` | Execute SQL on Snowflake, return DataFrame |
-| `cortex_analyst(question, semantic_model_path)` | Natural-language → SQL via Cortex ANALYST |
-| `cortex_complete(prompt, model)` | Snowflake Cortex LLM completion |
-| `cortex_summarize(text, model)` | Snowflake Cortex summarization |
-| `query_bigquery(sql, project_id)` | Execute SQL on BigQuery, return DataFrame |
-| `query_mssql(sql, server, database)` | Execute SQL on SQL Server, return DataFrame |
-| `combine_dataframes(df_a_key, df_b_key, join_key, how)` | pandas merge of two cached DataFrames |
-| `ask_clarification(message, candidates)` | Suspend loop and request user selection |
-
----
-
-## Production Deployment (Docker)
-
-The stack is fully containerised and runs on any host that supports Docker Compose v2 — VPS, bare metal, AWS EC2, DigitalOcean, Azure VM, etc. nginx is the single public entry point; backend and frontend are never exposed directly.
-
-```
-nginx (port 80/443) ─── frontend (port 80, internal)
-                    └── backend  (port 8000, internal)
-                              └── redis (port 6379, internal)
-                              └── sqlite_data / postgres (volume)
-```
-
-### 1 — Prepare the server
-
-Install Docker Engine and Compose v2 on your host:
-
-```bash
-# Ubuntu / Debian
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER   # log out and back in
-docker compose version           # should print v2.x
-```
-
-Clone the repo and enter the chatbot directory:
-
-```bash
-git clone <your-repo-url>
-cd database_agent/chatbot
-```
-
-### 2 — Configure environment
-
-```bash
-cp env.template .env
-```
-
-Edit `.env`. Minimum required values:
-
-```bash
-SECRET_KEY=$(openssl rand -hex 32)   # paste the output into .env
-ANTHROPIC_API_KEY=sk-ant-...         # at least one LLM key required
-CORS_ORIGIN=https://your-domain.com  # must match the public URL
-REDIS_ENABLED=true                   # enable for production (multi-worker safe)
-REDIS_URL=redis://redis:6379/0       # matches the redis service in docker-compose.yml
-```
-
-Never commit `.env` — it contains secrets.
-
-### 3 — Build and start
-
-```bash
-docker compose up --build -d
-```
-
-This builds all images locally and starts four services: `redis`, `backend`, `frontend`, `nginx`. nginx listens on port 80. Check that everything is healthy:
-
-```bash
-docker compose ps
-docker compose logs backend --tail 50
-curl http://localhost/health          # should return {"status":"ok",...}
-```
-
-### 4 — HTTPS with a reverse proxy (recommended)
-
-Run nginx or Caddy on the host as a TLS terminator in front of the Compose stack:
-
-**Option A — Caddy (simplest, auto-HTTPS)**
-
-Install Caddy on the host, then create `/etc/caddy/Caddyfile`:
-
-```
-your-domain.com {
-    reverse_proxy localhost:80
-}
-```
-
-```bash
-sudo systemctl reload caddy
-```
-
-Caddy automatically obtains and renews a Let's Encrypt certificate.
-
-**Option B — nginx on the host**
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-
-    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-
-    location / {
-        proxy_pass          http://localhost:80;
-        proxy_http_version  1.1;
-        proxy_set_header    Upgrade $http_upgrade;
-        proxy_set_header    Connection "upgrade";
-        proxy_set_header    Host $host;
-        proxy_read_timeout  3600s;   # required for long-lived WebSocket connections
-    }
-}
-```
-
-Use `certbot --nginx -d your-domain.com` to obtain the certificate.
-
-After adding TLS, update `CORS_ORIGIN` in `.env` to the `https://` URL and restart:
-
-```bash
-docker compose up -d --no-build
-```
-
-### 5 — Persistent database (PostgreSQL)
-
-SQLite is fine for a single host. For multiple replicas or managed backup, switch to PostgreSQL:
-
-```bash
-# On the host (or use a managed DB service)
-docker run -d \
-  --name chatbot-postgres \
-  -e POSTGRES_DB=chatbot \
-  -e POSTGRES_USER=chatbot \
-  -e POSTGRES_PASSWORD=YOUR_DB_PASSWORD \
-  -v pg_data:/var/lib/postgresql/data \
-  -p 5432:5432 \
-  postgres:15-alpine
-```
-
-Then set in `.env`:
-
-```bash
-DATABASE_URL=postgresql+asyncpg://chatbot:YOUR_DB_PASSWORD@host.docker.internal:5432/chatbot
-```
-
-Add `asyncpg` to `chatbot/backend/requirements.txt` before rebuilding. Run Alembic migrations on first deploy:
-
-```bash
-docker compose run --rm backend alembic upgrade head
-```
-
-### 6 — Updating the deployment
-
-```bash
-git pull
-docker compose up --build -d   # rebuilds changed images, replaces containers
-docker compose image prune -f  # remove dangling old images
-```
-
-### Environment routing reference
-
-| Mode | Entry point | WebSocket URL resolved from | Backend |
-|------|------------|----------------------------|---------|
-| `npm start` (local dev) | `localhost:4200` | `proxy.conf.json` → `localhost:8000` | direct |
-| Docker Compose (HTTP) | `localhost:80` via nginx | `window.location` → `ws://localhost` | `http://backend:8000` (internal) |
-| Docker Compose + TLS | `your-domain.com:443` via host proxy | `window.location` → `wss://your-domain.com` | `http://backend:8000` (internal) |
-
-The frontend resolves the WebSocket URL from `window.location` at runtime — the same Docker image works in all three modes without rebuilding.
-
----
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/auth/guest` | Issue anonymous JWT |
+| `POST` | `/auth/token` | Issue named-user JWT |
+| `GET` | `/api/conversations?token=` | List conversations (most recent 100) |
+| `DELETE` | `/api/conversations/{id}?token=` | Delete conversation and messages |
+| `GET` | `/api/conversations/{id}/messages?token=` | Get all messages in a conversation |
+| `PATCH` | `/api/sessions/{id}/model?token=` | Switch model for a conversation session |
+| `GET` | `/health` | Health check — DB connectivity and provider status |
+| `WS` | `/ws/chat?token=` | Persistent WebSocket chat connection |
 
 ## Testing
 
 ```bash
-# Backend — from chatbot/backend/
-source .venv/bin/activate
-pytest                              # all tests
-pytest --cov=app                    # with coverage report
-pytest -k test_agent_loop           # single test file
-pytest -k test_clarification_flow   # clarification flow tests
-
-# Frontend — from chatbot/frontend/
-ng test                             # unit tests (Karma, watch mode)
-ng test --no-watch --code-coverage  # single run with coverage
+cd backend
+pytest                        # all tests
+pytest -v tests/              # verbose
+pytest --cov=app tests/       # with coverage report
 ```
 
-### Test coverage areas
+## Scripts
 
-| Test file | What it covers |
-|-----------|---------------|
-| `test_agent_loop.py` | Provider-specific agent loop correctness |
-| `test_auth.py` | JWT login, token validation, expiry |
-| `test_clarification_flow.py` | Ambiguous query → WS request → resume |
-| `test_combine_tools.py` | DataFrame merge edge cases |
-| `test_integration.py` | End-to-end WebSocket message flow |
-| `test_intent_clarification_integration.py` | End-to-end intent + clarification |
-| `test_intent_loader.py` | YAML intent parsing and validation |
-| `test_orchestrator.py` | ChatOrchestrator skill-match, confidence routing, CALL_SKILL/CLARIFY/GENERIC paths |
-| `test_providers.py` | LLM provider adapters (Anthropic, OpenAI, Gemini) |
-| `test_query_router.py` | Data query classification (keyword + LLM) |
-| `test_routing.py` | Per-provider confidence extraction (enhance_gemini, enhance_openai, enhance_anthropic) |
-| `test_session_model.py` | SessionModelStore get/set with in-memory and Redis backends |
-| `test_skill_registry.py` | SkillRegistry load, validation, reload |
-| `test_stress.py` | Concurrent WebSocket connection handling |
+All lifecycle scripts live in `chatbot/scripts/` (cross-platform) and `chatbot/` (build entry points).
+Run every script from the `chatbot/` directory unless noted otherwise.
 
----
+### Quick reference
+
+| Goal | macOS / Linux | Windows (PowerShell) |
+|------|--------------|----------------------|
+| First-time / routine start | `scripts/start.sh` | `scripts\start.ps1` |
+| Stop without losing data | `scripts/stop.sh` | `scripts\stop.ps1` |
+| Force full rebuild (no cache) | `scripts/rebuild.sh` | `scripts\rebuild.ps1` |
+| Build only (enterprise / CI) | `build.sh` | `build.ps1` |
+| Check prerequisites | `scripts/check_prereqs.sh` | `scripts\check_prereqs.ps1` |
+| Auto-start on Windows boot | — | `scripts\register_startup_task.ps1` *(Admin)* |
+
+### `scripts/start.sh` / `scripts/start.ps1`
+
+The recommended entry point for starting the stack. Runs in two steps:
+
+1. **Prerequisite check** — verifies Docker and `docker-compose` are installed, the Docker daemon is running, and `.env` exists.
+2. **Build + start** — delegates to `build.sh` / `build.ps1` (see below), which handles enterprise CA cert injection, proxy settings, image building, and dangling image cleanup.
+
+```bash
+# macOS / Linux
+cd chatbot
+./scripts/start.sh
+
+# Windows PowerShell
+cd chatbot
+.\scripts\start.ps1
+# If blocked by execution policy:
+# Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+### `scripts/stop.sh` / `scripts/stop.ps1`
+
+Stops all running containers with `docker-compose down`. Volumes (`sqlite_data`, `redis_data`) are preserved — chat history and Redis state survive the stop.
+
+```bash
+./scripts/stop.sh        # macOS / Linux
+.\scripts\stop.ps1       # Windows
+```
+
+### `scripts/rebuild.sh` / `scripts/rebuild.ps1`
+
+Tears down the stack and forces a completely fresh Docker image build (bypasses the layer cache). Use this when a `pip install` or `npm install` step is stale, or after a dependency version bump.
+
+```bash
+./scripts/rebuild.sh     # macOS / Linux — stops, builds --no-cache, starts
+.\scripts\rebuild.ps1    # Windows
+```
+
+### `build.sh` / `build.ps1`
+
+Low-level build entry point used by `scripts/start.sh` internally. Run this directly when:
+
+- Operating in CI/CD pipelines
+- You need to inject a corporate CA certificate or HTTP proxy
+- You want the image prune step without the prereq check overhead
+
+**Enterprise setup (one-time):**
+
+```bash
+# 1. Copy the example and fill in proxy settings
+cp enterprise-build.example .env.build
+
+# 2. Drop your corporate CA certificate
+cp /path/to/corp-ca.crt certs/corp-ca.crt
+
+# 3. Build — cert and proxy are injected automatically
+./build.sh          # macOS / Linux
+.\build.ps1         # Windows
+```
+
+Without `certs/corp-ca.crt` and `.env.build`, the build runs as a standard non-enterprise build.
+
+### `scripts/check_prereqs.sh` / `scripts/check_prereqs.ps1`
+
+Standalone prerequisite validator. Called automatically by `start.sh` and `rebuild.sh`. Run manually to diagnose setup issues before attempting a build.
+
+```bash
+./scripts/check_prereqs.sh    # exits 0 on success, 1 on failure
+.\scripts\check_prereqs.ps1
+```
+
+Checks:
+- `docker` and `docker-compose` are on `PATH`
+- Docker daemon is running
+- `chatbot/.env` file exists (warning only if missing)
+
+### `scripts/register_startup_task.ps1` *(Windows Server only)*
+
+Registers a Windows Scheduled Task named `ChatbotDockerStack` that runs `scripts/start.ps1` automatically at system boot. Must be run as Administrator.
+
+```powershell
+# Run as Administrator
+.\scripts\register_startup_task.ps1
+
+# To remove the task later:
+Unregister-ScheduledTask -TaskName 'ChatbotDockerStack' -Confirm:$false
+```
+
+### `backend/start.sh` *(local dev only)*
+
+Starts the FastAPI backend in hot-reload mode without Docker. Resolves uvicorn from the local `.venv` first, kills any existing uvicorn process on the target port, then starts with `--reload`.
+
+```bash
+cd backend
+./start.sh           # port 8080 (default)
+./start.sh 8081      # custom port
+```
+
+### `backend/docker-entrypoint.sh` *(container internal)*
+
+The Docker `ENTRYPOINT` for the backend container. Not intended to be run manually. On every container start it:
+
+1. Fixes ownership of `/app/data` for the non-root `appuser`.
+2. Snapshots every `.db` file to a timestamped backup (retains the 5 most recent).
+3. Runs `alembic upgrade head` — exits non-zero if migrations fail, blocking app startup.
+4. Executes the container's `CMD` as `appuser` via `gosu`.
+
+## Docker Services
+
+| Service | Image | Ports | Description |
+|---------|-------|-------|-------------|
+| `nginx` | `chatbot-nginx:latest` | `80:80`, `443:443` | TLS termination, routing, static hosting |
+| `frontend` | `chatbot-frontend:latest` | internal `80` | Angular SPA |
+| `backend` | `chatbot-backend:latest` | internal `8080` | FastAPI + uvicorn |
+| `redis` | `redis:7-alpine` | internal `6379` | DataFrame + clarification state |
+
+The backend is not exposed to the host — nginx is the sole public entry point.
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Commit using conventional commits: `git commit -m 'feat: add feature'`
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit using conventional commits (`git commit -m 'feat: add feature'`)
 4. Push and open a Pull Request against `main`
-5. Squash merge only — keep history clean
-
-This repo ships pre-configured Claude Code agents, skills, slash commands, and MCP server integrations. See `CLAUDE.md` for the full developer workflow and `.claude/skills/` for per-technology coding patterns.
+5. Squash merge — no direct push to `main` or `develop`

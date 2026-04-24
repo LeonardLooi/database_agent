@@ -83,8 +83,8 @@ RUN mkdir -p /app/data /app/config/intents /app/config/prompts \
     && chown appuser:appgroup /app/data /app/config/intents /app/config/prompts
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 # Entrypoint handles: chown /app/data → SQLite backup → prune old backups → alembic → exec appuser
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]

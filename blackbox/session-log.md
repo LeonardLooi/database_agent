@@ -864,3 +864,16 @@
 - chatbot/backend/app/api/routes/health.py
 - chatbot/backend/app/core/database.py
 <!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-24T01:02:13Z -->
+- README.md
+- blackbox/audit.md
+- chatbot/README.md
+- chatbot/backend/Dockerfile
+- chatbot/backend/start.sh
+- chatbot/docker-compose.dev.yml
+- chatbot/docker-compose.yml
+- chatbot/docs/ARCHITECTURE.md
+- chatbot/nginx/Dockerfile
+- chatbot/nginx/nginx.conf
+<!-- end-snapshot -->
