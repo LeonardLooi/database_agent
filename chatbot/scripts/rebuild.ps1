@@ -28,7 +28,7 @@ try {
 
     Write-Host ""
     Write-Host "Rebuild complete. Open https://localhost in your browser." -ForegroundColor Green
-    Write-Host "(Accept the self-signed certificate warning on first visit — expected for local dev.)"
+    Write-Host "(Accept the self-signed certificate warning on first visit -- expected for local dev.)"
 } finally {
     Pop-Location
 }

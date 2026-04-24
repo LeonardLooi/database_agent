@@ -12,6 +12,6 @@ Write-Host "Building and starting services..." -ForegroundColor Cyan
 
 Write-Host ""
 Write-Host "Stack is up. Open https://localhost in your browser." -ForegroundColor Green
-Write-Host "(Accept the self-signed certificate warning on first visit — expected for local dev.)"
+Write-Host "(Accept the self-signed certificate warning on first visit -- expected for local dev.)"
 Write-Host "Logs: docker compose logs -f"
 Write-Host "Stop: $scriptDir\stop.ps1"

@@ -42,7 +42,7 @@ if (-not (Test-Path $envFile)) {
 if ($hasComposeV2) {
     Write-Host "Using Docker Compose v2 (docker compose)" -ForegroundColor DarkGray
 } else {
-    Write-Host "Using Docker Compose v1 (docker-compose) — consider upgrading to Docker Desktop 4.x+" -ForegroundColor Yellow
+    Write-Host "Using Docker Compose v1 (docker-compose) -- consider upgrading to Docker Desktop 4.x+" -ForegroundColor Yellow
 }
 
 Write-Host "Prerequisites OK." -ForegroundColor Green
