@@ -18,3 +18,5 @@
 {"ts":"2026-04-23T12:11:34Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"/error-detective, ignore all documentations while checking the errror "}
 {"ts":"2026-04-23T12:13:22Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"/error-detective, ignore all documentations while checking the errror "}
 {"ts":"2026-04-23T13:39:36Z","tier":1,"suggested":"/review-code","acted_on":false,"blocked":false,"prompt_snippet":"check /chatbot/scripts and all .ps1 and .sh file, check their purpose and consol"}
+{"ts":"2026-04-24T02:01:23Z","tier":1,"suggested":"postgresql-database-reviewer","acted_on":false,"blocked":false,"prompt_snippet":"/gemini-api-dev python fastapi migration from google.generativeai "}
+{"ts":"2026-04-24T02:09:14Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"check and test .\build.ps1 on window OS for error "}

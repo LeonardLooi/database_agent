@@ -6,6 +6,8 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 import structlog
+from google import genai
+from google.genai import types as genai_types
 
 from app.core.config import settings
 from app.core.exceptions import AuthConfigError
@@ -44,15 +46,12 @@ def _make_adk_tool_wrapper(fn: Any, toolkit: Any) -> Any:
 
 class GeminiProvider(BaseLLMProvider):
     provider_name = "gemini"
-    default_model = "gemini-2.0-flash"
-    available_models = ["gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+    default_model = "gemini-2.5-flash"
+    available_models = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-flash-preview"]
 
     def __init__(self) -> None:
         self._credentials = self._resolve_credentials()
-        import google.generativeai as genai
-
-        genai.configure(credentials=self._credentials)
-        self._genai = genai
+        self._client = genai.Client(credentials=self._credentials)
 
     @classmethod
     def is_available(cls) -> bool:
@@ -157,7 +156,7 @@ class GeminiProvider(BaseLLMProvider):
                 "  Local (ADC):  run 'gcloud auth application-default login'"
             ) from exc
 
-    # ── freeform helpers (google-generativeai) ────────────────────────────────
+    # ── content helpers ───────────────────────────────────────────────────────
 
     def _to_gemini_contents(self, messages: list[MsgIn]) -> list[dict]:
         contents = []
@@ -165,6 +164,8 @@ class GeminiProvider(BaseLLMProvider):
             role = "model" if m.role == "assistant" else "user"
             contents.append({"role": role, "parts": [{"text": m.content}]})
         return contents
+
+    # ── freeform streaming / generation (google-genai) ────────────────────────
 
     async def stream(
         self,
@@ -174,16 +175,16 @@ class GeminiProvider(BaseLLMProvider):
         max_tokens: int = 1024,
     ) -> AsyncGenerator[str, None]:
         contents = self._to_gemini_contents(messages)
-        gen_model = self._genai.GenerativeModel(
-            model_name=model,
-            generation_config=self._genai.types.GenerationConfig(
-                temperature=temperature,
-                max_output_tokens=max_tokens,
-            ),
+        config = genai_types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
         )
         try:
-            response = await gen_model.generate_content_async(contents, stream=True)
-            async for chunk in response:
+            async for chunk in await self._client.aio.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=config,
+            ):
                 if chunk.text:
                     yield chunk.text
         except Exception as exc:
@@ -197,14 +198,15 @@ class GeminiProvider(BaseLLMProvider):
         max_tokens: int = 128,
     ) -> str:
         contents = self._to_gemini_contents(messages)
-        gen_model = self._genai.GenerativeModel(
-            model_name=model,
-            generation_config=self._genai.types.GenerationConfig(
-                max_output_tokens=max_tokens,
-            ),
+        config = genai_types.GenerateContentConfig(
+            max_output_tokens=max_tokens,
         )
         try:
-            response = await gen_model.generate_content_async(contents)
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
             return response.text
         except Exception as exc:
             logger.error("gemini_generate_error", error=str(exc), model=model)
@@ -277,8 +279,6 @@ class GeminiProvider(BaseLLMProvider):
             session_service=session_service,
         )
 
-        from google.genai import types as genai_types
-
         user_query = messages[-1].content if messages else ""
 
         token = _agent_ctx_var.set(ctx)
@@ -338,12 +338,15 @@ class GeminiProvider(BaseLLMProvider):
         from app.services.llm.base import RoutingDecision, SkillResult
 
         system_prompt = SkillPromptBuilder.build(skill, params)
+        config = genai_types.GenerateContentConfig(
+            system_instruction=system_prompt,
+        )
         try:
-            gen_model = self._genai.GenerativeModel(
-                model_name=model,
-                system_instruction=system_prompt,
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=user_message,
+                config=config,
             )
-            response = await gen_model.generate_content_async(user_message)
             output = response.text
         except Exception as exc:
             logger.error("gemini_execute_skill_error", error=str(exc), skill=skill.name)

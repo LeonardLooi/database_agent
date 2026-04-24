@@ -9,7 +9,22 @@
 #
 # Non-enterprise: just run .\build.ps1
 
-# ── Load proxy settings from .env.build ────────────────────────────────────────
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+# ── Detect compose command (v2 plugin preferred over v1 standalone) ─────────────
+$null = docker compose version 2>&1
+if ($LASTEXITCODE -eq 0) {
+    function dc { docker compose @args }
+} else {
+    if (-not (Get-Command docker-compose -ErrorAction SilentlyContinue)) {
+        Write-Error "Neither 'docker compose' nor 'docker-compose' found. Install Docker Desktop."
+        exit 1
+    }
+    function dc { docker-compose @args }
+}
+
+# ── Load proxy settings from .env.build ─────────────────────────────────────────
 if (Test-Path ".env.build") {
     Write-Host "[build] Loading proxy settings from .env.build"
     Get-Content ".env.build" | ForEach-Object {
@@ -20,7 +35,7 @@ if (Test-Path ".env.build") {
     }
 }
 
-# ── Auto-detect corporate CA cert ──────────────────────────────────────────────
+# ── Auto-detect corporate CA cert ────────────────────────────────────────────────
 # Place your cert at certs\corp-ca.crt — no env var wrangling needed.
 if (Test-Path "certs\corp-ca.crt") {
     if (-not $env:CORPORATE_CA_CERT) {
@@ -31,12 +46,17 @@ if (Test-Path "certs\corp-ca.crt") {
     Write-Host "[build] No corporate CA found at certs\corp-ca.crt — skipping (non-enterprise build)"
 }
 
-# ── Build ───────────────────────────────────────────────────────────────────────
-docker-compose up --build -d
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# ── Build ─────────────────────────────────────────────────────────────────────────
+Push-Location $PSScriptRoot
+try {
+    dc up --build -d
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "[build] Pruning dangling images from previous build..."
-docker image prune -f
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Write-Host "[build] Pruning dangling images from previous build..."
+    docker image prune -f
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "[build] Done."
+    Write-Host "[build] Done."
+} finally {
+    Pop-Location
+}

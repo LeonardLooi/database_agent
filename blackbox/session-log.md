@@ -877,3 +877,23 @@
 - chatbot/nginx/Dockerfile
 - chatbot/nginx/nginx.conf
 <!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-24T02:03:52Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/requirements.txt
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-04-24T02:11:39Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/services/llm/providers/gemini_provider.py
+- chatbot/backend/requirements.txt
+- chatbot/build.ps1
+- chatbot/scripts/check_prereqs.ps1
+- chatbot/scripts/rebuild.ps1
+- chatbot/scripts/start.ps1
+- chatbot/scripts/stop.ps1
+<!-- end-snapshot -->
