@@ -11,7 +11,9 @@ $missing = @()
 if (-not (Test-Command "docker")) { $missing += "docker" }
 
 # Accept compose v2 plugin (docker compose) OR v1 standalone (docker-compose)
-docker compose version 2>$null | Out-Null
+$ErrorActionPreference = 'SilentlyContinue'
+docker compose version 2>&1 | Out-Null
+$ErrorActionPreference = 'Stop'
 $hasComposeV2 = ($LASTEXITCODE -eq 0)
 $hasComposeV1 = (Test-Command "docker-compose")
 
@@ -24,11 +26,13 @@ if ($missing.Count -gt 0) {
     exit 1
 }
 
-# Redirect stderr to null so Docker Desktop's harmless warnings don't become
-# PowerShell error objects under $ErrorActionPreference = "Stop".
-# Only $LASTEXITCODE matters -- non-zero means the daemon is not reachable.
-docker info 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) {
+# Temporarily lower error preference so docker's stderr warnings don't become
+# PowerShell error objects. 2>&1 | Out-Null captures and discards both streams.
+$ErrorActionPreference = 'SilentlyContinue'
+docker info 2>&1 | Out-Null
+$daemonOk = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = 'Stop'
+if (-not $daemonOk) {
     Write-Error "Docker daemon is not running. Start Docker Desktop and retry."
     exit 1
 }

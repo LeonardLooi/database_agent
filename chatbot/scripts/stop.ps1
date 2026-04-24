@@ -5,7 +5,9 @@ $ErrorActionPreference = "Stop"
 $chatbotDir = Split-Path -Parent $PSScriptRoot
 
 # Detect compose command (v2 plugin preferred over v1 standalone)
-docker compose version 2>$null | Out-Null
+$ErrorActionPreference = 'SilentlyContinue'
+docker compose version 2>&1 | Out-Null
+$ErrorActionPreference = 'Stop'
 if ($LASTEXITCODE -eq 0) {
     function dc { docker compose @args }
 } else {
