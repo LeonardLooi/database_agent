@@ -46,7 +46,7 @@ def test_base_provider_run_agent_loop_raises():
 
     provider = _Concrete()
     with pytest.raises(NotImplementedError):
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             provider.run_agent_loop(
                 [MsgIn(role="user", content="hello")], "test-model", None
             )

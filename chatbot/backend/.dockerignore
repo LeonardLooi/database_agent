@@ -25,5 +25,3 @@ venv/
 .ruff_cache/
 *.md
 !README.md
-# Copied explicitly to /usr/local/bin — not needed inside /app
-docker-entrypoint.sh

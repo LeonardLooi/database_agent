@@ -20,13 +20,19 @@ COPY package*.json ./
 # Point npm at the system CA bundle — picks up corporate CA when installed above
 RUN npm config set cafile /etc/ssl/certs/ca-certificates.crt && npm ci
 COPY . .
-RUN npm run build
+RUN if [ -s /tmp/corp-ca.crt ]; then \
+    NODE_EXTRA_CA_CERTS=/tmp/corp-ca.crt npm run build; \
+else \
+    npm run build; \
+fi
 
 FROM nginx:1.27-alpine
 # ARGs reset after FROM — redeclare in every stage
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
+
+RUN apk add --no-cache ca-certificates
 
 COPY corp-ca.crt /tmp/corp-ca.crt
 RUN if [ -s /tmp/corp-ca.crt ]; then \

@@ -3,7 +3,7 @@ FROM nginx:1.27-alpine
 # Enterprise: corporate CA is pre-copied as corp-ca.crt by build.sh / build.ps1
 # to avoid Windows environment variable and command-line length limits.
 # corp-ca.crt is an empty file in non-enterprise builds — [ -s ] skips install.
-RUN apk add --no-cache openssl
+RUN apk add --no-cache ca-certificates openssl
 
 COPY corp-ca.crt /tmp/corp-ca.crt
 RUN if [ -s /tmp/corp-ca.crt ]; then \
