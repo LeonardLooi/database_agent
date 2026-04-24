@@ -2,19 +2,18 @@
 FROM python:3.14-slim AS builder
 WORKDIR /app
 
-# Enterprise: accept corporate CA and proxy settings as build args.
-# ARGs reset after each FROM — must be redeclared in every stage.
-# Usage: docker build --build-arg CORPORATE_CA_CERT="$(cat corp.crt)" ...
-# Or set in .env and wired through docker-compose build args (see docker-compose.yml).
-ARG CORPORATE_CA_CERT=""
+# Enterprise: accept proxy settings as build args.
+# Corporate CA is pre-copied as corp-ca.crt by build.sh / build.ps1 to avoid
+# Windows environment variable and command-line length limits.
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
 
 # Install corporate CA BEFORE any HTTPS operations (apt repos, curl, pip).
-# Skipped when CORPORATE_CA_CERT is empty (non-enterprise builds).
-RUN if [ -n "${CORPORATE_CA_CERT}" ]; then \
-    echo "${CORPORATE_CA_CERT}" > /usr/local/share/ca-certificates/corporate-ca.crt && \
+# corp-ca.crt is an empty file in non-enterprise builds — [ -s ] skips install.
+COPY corp-ca.crt /tmp/corp-ca.crt
+RUN if [ -s /tmp/corp-ca.crt ]; then \
+    cp /tmp/corp-ca.crt /usr/local/share/ca-certificates/corporate-ca.crt && \
     update-ca-certificates; \
 fi
 
@@ -43,14 +42,14 @@ FROM python:3.14-slim AS runtime
 WORKDIR /app
 
 # ARGs reset after FROM — redeclare in every stage
-ARG CORPORATE_CA_CERT=""
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
 
 # Corporate CA must be installed before curl downloads the Microsoft signing key
-RUN if [ -n "${CORPORATE_CA_CERT}" ]; then \
-    echo "${CORPORATE_CA_CERT}" > /usr/local/share/ca-certificates/corporate-ca.crt && \
+COPY corp-ca.crt /tmp/corp-ca.crt
+RUN if [ -s /tmp/corp-ca.crt ]; then \
+    cp /tmp/corp-ca.crt /usr/local/share/ca-certificates/corporate-ca.crt && \
     update-ca-certificates; \
 fi
 

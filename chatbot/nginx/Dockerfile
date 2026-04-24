@@ -1,17 +1,19 @@
 FROM nginx:1.27-alpine
 
-# Enterprise: accept corporate CA as build arg.
-ARG CORPORATE_CA_CERT=""
+# Enterprise: corporate CA is pre-copied as corp-ca.crt by build.sh / build.ps1
+# to avoid Windows environment variable and command-line length limits.
+# corp-ca.crt is an empty file in non-enterprise builds — [ -s ] skips install.
+RUN apk add --no-cache openssl
 
-RUN if [ -n "${CORPORATE_CA_CERT}" ]; then \
-    echo "${CORPORATE_CA_CERT}" > /usr/local/share/ca-certificates/corporate-ca.crt && \
+COPY corp-ca.crt /tmp/corp-ca.crt
+RUN if [ -s /tmp/corp-ca.crt ]; then \
+    cp /tmp/corp-ca.crt /usr/local/share/ca-certificates/corporate-ca.crt && \
     update-ca-certificates; \
 fi
 
 # Generate self-signed TLS certificate for HTTPS.
 # For production, mount a real certificate via volume or replace these files.
-RUN apk add --no-cache openssl && \
-    mkdir -p /etc/nginx/ssl && \
+RUN mkdir -p /etc/nginx/ssl && \
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /etc/nginx/ssl/server.key \
         -out /etc/nginx/ssl/server.crt \

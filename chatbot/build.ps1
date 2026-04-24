@@ -28,20 +28,32 @@ if ($LASTEXITCODE -eq 0) {
 if (Test-Path ".env.build") {
     Write-Host "[build] Loading proxy settings from .env.build"
     Get-Content ".env.build" | ForEach-Object {
-        # Skip blank lines and comments
         if ($_ -match "^\s*([^#\s][^=]*)=(.*)$") {
             [System.Environment]::SetEnvironmentVariable($Matches[1].Trim(), $Matches[2].Trim(), "Process")
         }
     }
 }
 
-# ── Auto-detect corporate CA cert ────────────────────────────────────────────────
-# Place your cert at certs\corp-ca.crt — no env var wrangling needed.
-if (Test-Path "certs\corp-ca.crt") {
-    if (-not $env:CORPORATE_CA_CERT) {
-        Write-Host "[build] Corporate CA detected at certs\corp-ca.crt — injecting into build"
-        $env:CORPORATE_CA_CERT = Get-Content "certs\corp-ca.crt" -Raw
+# ── Pre-copy corporate CA cert into each build context ──────────────────────────
+# Avoids Windows environment variable and command-line length limits that occur
+# when cert content is passed as a build arg string.
+# Each Dockerfile uses COPY corp-ca.crt directly — no ARG injection needed.
+$buildContexts = @("backend", "frontend", "nginx")
+$certSrc = Join-Path $PSScriptRoot "certs\corp-ca.crt"
+$hasCert = Test-Path $certSrc
+
+foreach ($ctx in $buildContexts) {
+    $dest = Join-Path $PSScriptRoot "$ctx\corp-ca.crt"
+    if ($hasCert) {
+        Copy-Item $certSrc $dest -Force
+    } else {
+        # Empty placeholder — Dockerfile checks file size before installing
+        New-Item -Path $dest -ItemType File -Force | Out-Null
     }
+}
+
+if ($hasCert) {
+    Write-Host "[build] Corporate CA detected at certs\corp-ca.crt — copied into build contexts"
 } else {
     Write-Host "[build] No corporate CA found at certs\corp-ca.crt — skipping (non-enterprise build)"
 }
@@ -58,5 +70,10 @@ try {
 
     Write-Host "[build] Done."
 } finally {
+    # Always clean up cert copies — they must not persist in source directories
+    foreach ($ctx in $buildContexts) {
+        $dest = Join-Path $PSScriptRoot "$ctx\corp-ca.crt"
+        if (Test-Path $dest) { Remove-Item $dest -Force }
+    }
     Pop-Location
 }

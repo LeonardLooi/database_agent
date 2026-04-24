@@ -27,10 +27,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      # Enterprise args injected automatically by build.sh / build.ps1.
-      # See enterprise-build.example for setup instructions.
+      # Corporate CA is pre-copied as corp-ca.crt by build.sh / build.ps1.
+      # Proxy settings are still passed as build args (short strings, no length issues).
       args:
-        CORPORATE_CA_CERT: ${CORPORATE_CA_CERT:-}
         HTTP_PROXY: ${HTTP_PROXY:-}
         HTTPS_PROXY: ${HTTPS_PROXY:-}
         NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
@@ -69,7 +68,6 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        CORPORATE_CA_CERT: ${CORPORATE_CA_CERT:-}
         HTTP_PROXY: ${HTTP_PROXY:-}
         HTTPS_PROXY: ${HTTPS_PROXY:-}
         NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
@@ -96,8 +94,6 @@ services:
     build:
       context: ./nginx
       dockerfile: Dockerfile
-      args:
-        CORPORATE_CA_CERT: ${CORPORATE_CA_CERT:-}
     image: chatbot-nginx:latest
     ports:
       - "80:80"

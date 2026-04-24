@@ -19,21 +19,41 @@ if [ -f ".env.build" ]; then
     set +a
 fi
 
-# ── Auto-detect corporate CA cert ──────────────────────────────────────────────
-# Place your cert at certs/corp-ca.crt — no env var wrangling needed.
-if [ -f "certs/corp-ca.crt" ]; then
-    if [ -z "${CORPORATE_CA_CERT}" ]; then
-        echo "[build] Corporate CA detected at certs/corp-ca.crt — injecting into build"
-        CORPORATE_CA_CERT=$(cat "certs/corp-ca.crt")
-        export CORPORATE_CA_CERT
+# ── Pre-copy corporate CA cert into each build context ──────────────────────────
+# Avoids shell/env limitations when cert content is large.
+# Each Dockerfile uses COPY corp-ca.crt directly — no ARG injection needed.
+CERT_SRC="certs/corp-ca.crt"
+for ctx in backend frontend nginx; do
+    if [ -f "$CERT_SRC" ]; then
+        cp "$CERT_SRC" "$ctx/corp-ca.crt"
+    else
+        # Empty placeholder — Dockerfile checks file size before installing
+        : > "$ctx/corp-ca.crt"
     fi
+done
+
+if [ -f "$CERT_SRC" ]; then
+    echo "[build] Corporate CA detected at $CERT_SRC — copied into build contexts"
 else
-    echo "[build] No corporate CA found at certs/corp-ca.crt — skipping (non-enterprise build)"
+    echo "[build] No corporate CA found at $CERT_SRC — skipping (non-enterprise build)"
 fi
 
 # ── Build ───────────────────────────────────────────────────────────────────────
-docker-compose up --build -d
+# Detect compose v2 (docker compose) or v1 (docker-compose)
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE="docker compose"
+else
+    COMPOSE="docker-compose"
+fi
+
+$COMPOSE up --build -d
 
 echo "[build] Pruning dangling images from previous build..."
 docker image prune -f
+
+# ── Cleanup — remove cert copies from source directories ────────────────────────
+for ctx in backend frontend nginx; do
+    rm -f "$ctx/corp-ca.crt"
+done
+
 echo "[build] Done."
