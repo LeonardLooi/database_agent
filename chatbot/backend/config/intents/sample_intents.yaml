@@ -62,3 +62,23 @@ intents:
       - cross
       - join
       - both
+
+  - name: ai_insights
+    description: "Ask the AI insights service a free-form question about business data"
+    connectors:
+      - type: rest
+        url: "http://localhost:8001/api/insights"
+        method: POST
+        headers:
+          Authorization: "Bearer ${INSIGHTS_API_TOKEN}"
+          Content-Type: "application/json"
+    keywords:
+      - insights
+      - analysis
+      - analyse
+      - analyze
+      - recommend
+      - suggest
+      - predict
+      - forecast
+      - explain

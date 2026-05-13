@@ -20,3 +20,16 @@
 {"ts":"2026-04-23T13:39:36Z","tier":1,"suggested":"/review-code","acted_on":false,"blocked":false,"prompt_snippet":"check /chatbot/scripts and all .ps1 and .sh file, check their purpose and consol"}
 {"ts":"2026-04-24T02:01:23Z","tier":1,"suggested":"postgresql-database-reviewer","acted_on":false,"blocked":false,"prompt_snippet":"/gemini-api-dev python fastapi migration from google.generativeai "}
 {"ts":"2026-04-24T02:09:14Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"check and test .\build.ps1 on window OS for error "}
+{"ts":"2026-04-24T02:42:36Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"check_prereqs.ps1 have error message: docker: Warning: no blkio throttle.read_bp"}
+{"ts":"2026-04-24T02:47:47Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"at start.ps1, error message of target backend: failed to solve: failed to comput"}
+{"ts":"2026-04-24T02:51:43Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"at start.ps1, error message of target backend: failed to solve: failed to comput"}
+{"ts":"2026-04-24T03:50:30Z","tier":1,"suggested":"/review-code","acted_on":false,"blocked":false,"prompt_snippet":"review and fix the following problems "}
+{"ts":"2026-04-24T03:55:02Z","tier":1,"suggested":"/debug","acted_on":false,"blocked":false,"prompt_snippet":"1. backend: docker-entrypoint.sh not found. 2. frontend/nginx: corporate CA inst"}
+{"ts":"2026-04-24T04:39:03Z","tier":0,"suggested":"null","acted_on":false,"blocked":true,"prompt_snippet":"You are a senior DevOps + full-stack QA engineer. Your mission is to fully stres"}
+{"ts":"2026-04-24T04:39:56Z","tier":0,"suggested":"null","acted_on":false,"blocked":true,"prompt_snippet":"You are a senior DevOps + full-stack QA engineer. Your mission is to fully stres"}
+{"ts":"2026-04-24T04:40:08Z","tier":0,"suggested":"null","acted_on":false,"blocked":true,"prompt_snippet":"You are a senior DevOps + full-stack QA engineer. Your mission is to fully stres"}
+{"ts":"2026-04-24T04:40:37Z","tier":0,"suggested":"null","acted_on":false,"blocked":true,"prompt_snippet":"You are a senior DevOps + full-stack QA engineer. Your mission is to fully stres"}
+{"ts":"2026-05-03T08:41:01Z","tier":1,"suggested":"/review-code","acted_on":false,"blocked":false,"prompt_snippet":"/plan-review review existing skill .claude/skills/documentation-generation and c"}
+{"ts":"2026-05-03T08:46:13Z","tier":1,"suggested":"ui-standards-expert","acted_on":false,"blocked":false,"prompt_snippet":"/plan-review review existing skill .claude/skills/documentation-generation and c"}
+{"ts":"2026-05-03T09:20:12Z","tier":1,"suggested":"/review-code","acted_on":false,"blocked":false,"prompt_snippet":"/plan-review  update .claude/skills/deep-documentation such that it will auto sp"}
+{"ts":"2026-05-13T10:11:21Z","tier":1,"suggested":"/review-code","acted_on":false,"blocked":false,"prompt_snippet":"check backend on how to enable rest api call if detected the right intention bas"}

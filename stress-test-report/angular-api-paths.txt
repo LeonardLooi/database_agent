@@ -1,0 +1,8 @@
+# Angular HttpClient paths extracted from source — 2026-04-24
+# Used by contract_check.py to verify against OpenAPI schema
+
+POST /auth/guest
+GET  /api/conversations
+GET  /api/conversations/{id}/messages
+DELETE /api/conversations/{id}
+PATCH /api/sessions/{id}/model

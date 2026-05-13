@@ -66,7 +66,7 @@ class TestAnthropicTools:
         expected = {
             "query_snowflake", "cortex_analyst", "cortex_complete",
             "cortex_summarize", "query_bigquery", "query_mssql",
-            "combine_dataframes", "ask_clarification",
+            "combine_dataframes", "ask_clarification", "call_rest_api",
         }
         assert expected == names
 

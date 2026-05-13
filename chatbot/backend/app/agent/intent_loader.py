@@ -12,12 +12,17 @@ logger = structlog.get_logger()
 
 
 class ConnectorConfig(BaseModel):
-    type: Literal["snowflake", "bigquery", "mssql"]
+    type: Literal["snowflake", "bigquery", "mssql", "rest"]
+    # DB connector fields
     warehouse: str = ""
     database: str = ""
     schema_name: str = Field(default="PUBLIC", alias="schema")
     project_id: str = ""
     server: str = ""
+    # REST connector fields
+    url: str = ""
+    method: str = "POST"
+    headers: dict = Field(default_factory=dict)
 
     model_config = {"populate_by_name": True}
 

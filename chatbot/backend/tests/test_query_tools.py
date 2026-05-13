@@ -13,6 +13,7 @@ from app.agent.dataframe_store import DataFrameStore
 from app.agent.tools.query_tools import (
     AgentToolContext,
     _make_summary,
+    call_rest_api,
     cortex_analyst,
     cortex_complete,
     cortex_summarize,
@@ -213,3 +214,69 @@ class TestQueryMssql:
             result = await query_mssql(sql="SELECT 1", ctx=ctx, label="mssql_custom")
 
         assert result["label"] == "mssql_custom"
+
+
+class TestCallRestApi:
+    @pytest.mark.asyncio
+    async def test_call_rest_api_success_json(self, ctx):
+        from unittest.mock import AsyncMock
+
+        mock_connector = AsyncMock()
+        mock_connector.call.return_value = {"data": {"answer": "Revenue is $1M"}, "status": 200}
+
+        with patch(
+            "app.agent.tools.query_tools.RestConnector",
+            return_value=mock_connector,
+        ):
+            result = await call_rest_api(
+                prompt="What is the revenue?",
+                ctx=ctx,
+                url="https://api.example.com/insights",
+                method="POST",
+            )
+
+        assert result["label"] == "rest_result"
+        assert result["status"] == 200
+        assert result["data"] == {"answer": "Revenue is $1M"}
+        mock_connector.call.assert_called_once_with("What is the revenue?")
+
+    @pytest.mark.asyncio
+    async def test_call_rest_api_custom_label(self, ctx):
+        from unittest.mock import AsyncMock
+
+        mock_connector = AsyncMock()
+        mock_connector.call.return_value = {"data": "ok", "status": 200}
+
+        with patch(
+            "app.agent.tools.query_tools.RestConnector",
+            return_value=mock_connector,
+        ):
+            result = await call_rest_api(
+                prompt="test",
+                ctx=ctx,
+                url="https://api.example.com/v2",
+                label="custom_rest",
+            )
+
+        assert result["label"] == "custom_rest"
+
+    @pytest.mark.asyncio
+    async def test_call_rest_api_propagates_error(self, ctx):
+        import httpx
+        from unittest.mock import AsyncMock
+
+        mock_connector = AsyncMock()
+        mock_connector.call.side_effect = httpx.HTTPStatusError(
+            "503", request=MagicMock(), response=MagicMock()
+        )
+
+        with patch(
+            "app.agent.tools.query_tools.RestConnector",
+            return_value=mock_connector,
+        ):
+            with pytest.raises(httpx.HTTPStatusError):
+                await call_rest_api(
+                    prompt="test",
+                    ctx=ctx,
+                    url="https://api.example.com/fail",
+                )

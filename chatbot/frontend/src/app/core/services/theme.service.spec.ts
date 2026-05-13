@@ -21,7 +21,7 @@ describe('ThemeService', () => {
 
   it('should apply data-theme attribute on init', () => {
     const theme = document.documentElement.getAttribute('data-theme');
-    expect(['dark', 'light']).toContain(theme);
+    expect(['dark', 'light']).toContain(theme as string);
   });
 
   it('should persist dark preference in localStorage', () => {

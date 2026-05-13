@@ -1,7 +1,7 @@
-"""Tests for database connectors — BaseConnector, BigQuery, MSSQL with mocks."""
+"""Tests for database connectors — BaseConnector, BigQuery, MSSQL, REST with mocks."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -9,6 +9,7 @@ import pytest
 from app.agent.connectors.base import BaseConnector
 from app.agent.connectors.bigquery_connector import BigQueryConnector
 from app.agent.connectors.mssql_connector import MSSQLConnector
+from app.agent.connectors.rest_connector import RestConnector, _resolve_env_vars
 
 
 # ── BaseConnector ─────────────────────────────────────────────────────────────
@@ -170,3 +171,97 @@ class TestMSSQLConnector:
             df = conn.execute_query("EXEC some_proc")
 
         assert list(df.columns) == []
+
+
+# ── RestConnector ─────────────────────────────────────────────────────────────
+
+def _make_mock_response(status: int = 200, json_data=None, text: str = ""):
+    mock_resp = MagicMock()
+    mock_resp.status_code = status
+    mock_resp.raise_for_status = MagicMock()
+    if json_data is not None:
+        mock_resp.json.return_value = json_data
+    else:
+        mock_resp.json.side_effect = ValueError("not JSON")
+        mock_resp.text = text
+    return mock_resp
+
+
+def _make_mock_client(response):
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.request = AsyncMock(return_value=response)
+    return mock_client
+
+
+class TestResolveEnvVars:
+    def test_replaces_known_var(self, monkeypatch):
+        monkeypatch.setenv("MY_TOKEN", "secret123")
+        result = _resolve_env_vars({"Authorization": "Bearer ${MY_TOKEN}"})
+        assert result["Authorization"] == "Bearer secret123"
+
+    def test_leaves_unknown_var_unchanged(self):
+        result = _resolve_env_vars({"X-Header": "${UNKNOWN_VAR}"})
+        assert result["X-Header"] == "${UNKNOWN_VAR}"
+
+    def test_empty_headers(self):
+        assert _resolve_env_vars({}) == {}
+
+
+class TestRestConnector:
+    @pytest.mark.asyncio
+    async def test_post_json_response(self):
+        mock_resp = _make_mock_response(json_data={"answer": "42"})
+        mock_client = _make_mock_client(mock_resp)
+
+        with patch("app.agent.connectors.rest_connector.httpx.AsyncClient", return_value=mock_client):
+            conn = RestConnector(url="https://api.example.com/insights", method="POST")
+            result = await conn.call("What is the revenue?")
+
+        assert result["status"] == 200
+        assert result["data"] == {"answer": "42"}
+        mock_client.request.assert_called_once()
+        call_args = mock_client.request.call_args
+        assert call_args[0][0] == "POST"
+        assert call_args[0][1] == "https://api.example.com/insights"
+        assert call_args[1]["json"] == {"prompt": "What is the revenue?"}
+
+    @pytest.mark.asyncio
+    async def test_post_plain_text_response(self):
+        mock_resp = _make_mock_response(text="plain text answer")
+        mock_client = _make_mock_client(mock_resp)
+
+        with patch("app.agent.connectors.rest_connector.httpx.AsyncClient", return_value=mock_client):
+            conn = RestConnector(url="https://api.example.com/insights", method="POST")
+            result = await conn.call("Explain this")
+
+        assert result["data"] == "plain text answer"
+
+    @pytest.mark.asyncio
+    async def test_get_sends_prompt_as_query_param(self):
+        mock_resp = _make_mock_response(json_data={"ok": True})
+        mock_client = _make_mock_client(mock_resp)
+
+        with patch("app.agent.connectors.rest_connector.httpx.AsyncClient", return_value=mock_client):
+            conn = RestConnector(url="https://api.example.com/query", method="GET")
+            await conn.call("list all products")
+
+        call_args = mock_client.request.call_args
+        assert call_args[0][0] == "GET"
+        assert call_args[1]["params"] == {"prompt": "list all products"}
+
+    @pytest.mark.asyncio
+    async def test_http_error_propagates(self):
+        import httpx
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "500", request=MagicMock(), response=MagicMock()
+        )
+        mock_client = _make_mock_client(mock_resp)
+
+        with patch("app.agent.connectors.rest_connector.httpx.AsyncClient", return_value=mock_client):
+            conn = RestConnector(url="https://api.example.com/fail", method="POST")
+            with pytest.raises(httpx.HTTPStatusError):
+                await conn.call("test")

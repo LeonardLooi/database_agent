@@ -9,6 +9,7 @@ import structlog
 
 from app.agent.connectors.bigquery_connector import BigQueryConnector
 from app.agent.connectors.mssql_connector import MSSQLConnector
+from app.agent.connectors.rest_connector import RestConnector
 from app.agent.connectors.snowflake_connector import SnowflakeConnector
 from app.core.config import settings
 
@@ -167,3 +168,24 @@ async def query_mssql(
     ctx.store.store(ctx.user_id, ctx.conversation_id, label, df)
     logger.info("query_mssql_done", label=label, rows=len(df))
     return _make_summary(df, label, truncated)
+
+
+# ── REST API ──────────────────────────────────────────────────────────────────
+
+async def call_rest_api(
+    prompt: str,
+    ctx: AgentToolContext,
+    url: str,
+    method: str = "POST",
+    headers: dict | None = None,
+    label: str = "rest_result",
+) -> dict:
+    """POST the user's original prompt to a configured REST API and return the result.
+
+    The prompt is sent as {"prompt": "<text>"} in the request body.
+    The full API response is returned so the LLM can compose a natural language answer.
+    """
+    connector = RestConnector(url=url, method=method, headers=headers or {})
+    result = await connector.call(prompt)
+    logger.info("call_rest_api_done", label=label, status=result.get("status"))
+    return {"label": label, "data": result["data"], "status": result["status"]}

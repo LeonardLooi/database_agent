@@ -9,6 +9,7 @@ from app.agent.tools.clarification_tools import ask_clarification
 from app.agent.tools.combine_tools import combine_dataframes
 from app.agent.tools.query_tools import (
     AgentToolContext,
+    call_rest_api,
     cortex_analyst,
     cortex_complete,
     cortex_summarize,
@@ -165,6 +166,32 @@ class SharedToolkit:
                 "required": ["message"],
             },
         },
+        {
+            "name": "call_rest_api",
+            "description": (
+                "Call a REST API intent with the user's original prompt. "
+                "Use this when the matched intent has a REST connector. "
+                "Pass the intent name exactly as listed and the user's verbatim question."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "intent_name": {
+                        "type": "string",
+                        "description": "Exact name of the REST intent to call (as listed in Available data intents)",
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "The user's original question, passed verbatim to the API",
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Result label for the session store (default: rest_result)",
+                    },
+                },
+                "required": ["intent_name", "prompt"],
+            },
+        },
     ]
 
     # ── provider-specific formats ─────────────────────────────────────────────
@@ -203,6 +230,7 @@ class SharedToolkit:
             cortex_summarize,
             query_bigquery,
             query_mssql,
+            call_rest_api,
         ]
 
     def get_strands_tools(self) -> list[Any]:
@@ -214,6 +242,7 @@ class SharedToolkit:
             cortex_summarize,
             query_bigquery,
             query_mssql,
+            call_rest_api,
             ask_clarification,
         ]
 
@@ -228,6 +257,7 @@ class SharedToolkit:
             "query_mssql": lambda: query_mssql(ctx=ctx, **args),
             "combine_dataframes": lambda: _dispatch_combine(args, ctx),
             "ask_clarification": lambda: ask_clarification(ctx=ctx, **args),
+            "call_rest_api": lambda: _dispatch_rest_api(args, ctx, self.intent_loader),
         }
         fn = dispatch_map.get(tool_name)
         if fn is None:
@@ -246,9 +276,14 @@ class SharedToolkit:
                 lines.append(f"  Keywords: {', '.join(intent.keywords)}")
         lines.append(
             "\nWhen the user asks a data question, select the best matching intent and "
-            "call the appropriate tool. If intent confidence is low, call ask_clarification "
-            "BEFORE running any query. For multi-source queries, fetch each source separately "
-            "then call combine_dataframes."
+            "call the appropriate tool:\n"
+            "- connectors: snowflake → call query_snowflake\n"
+            "- connectors: bigquery  → call query_bigquery\n"
+            "- connectors: mssql     → call query_mssql\n"
+            "- connectors: rest      → call call_rest_api with intent_name=<name> and "
+            "prompt=<user's verbatim question>\n"
+            "If intent confidence is low, call ask_clarification BEFORE running any query. "
+            "For multi-source queries, fetch each source separately then call combine_dataframes."
         )
         return "\n".join(lines)
 
@@ -263,6 +298,45 @@ def _dispatch_combine(args: dict, ctx: AgentToolContext) -> Any:
             user_id=ctx.user_id,
             conversation_id=ctx.conversation_id,
             **args,
+        )
+
+    return _run()
+
+
+def _dispatch_rest_api(
+    args: dict,
+    ctx: AgentToolContext,
+    intent_loader: "YAMLIntentLoader",
+) -> Any:
+    """Resolve the REST connector config from the intent registry, then call the API.
+
+    The LLM passes intent_name + prompt. URL/method/headers come from the YAML
+    so they never travel through the LLM prompt.
+    """
+    from app.agent.intent_loader import YAMLIntentLoader  # noqa: F401 (type hint only)
+
+    intent_name: str = args.get("intent_name", "")
+    prompt: str = args.get("prompt", "")
+    label: str = args.get("label", "rest_result")
+
+    intent = intent_loader.get(intent_name)
+    if not intent:
+        raise ValueError(f"Unknown intent: '{intent_name}'")
+
+    rest_connectors = [c for c in intent.connectors if c.type == "rest"]
+    if not rest_connectors:
+        raise ValueError(f"Intent '{intent_name}' has no REST connector configured")
+
+    cfg = rest_connectors[0]
+
+    async def _run():
+        return await call_rest_api(
+            prompt=prompt,
+            ctx=ctx,
+            url=cfg.url,
+            method=cfg.method,
+            headers=cfg.headers,
+            label=label,
         )
 
     return _run()

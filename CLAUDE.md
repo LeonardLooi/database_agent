@@ -81,6 +81,7 @@ Consult official docs via MCP before writing ANY code. Zero tolerance for deprec
 | Brainstorm / Explore Options | — | — | `/brainstorm` |
 | Stripe Payments | `.claude/skills/stripe/` | — | — |
 | RevenueCat Subscriptions | `.claude/skills/revenuecat/` | — | — |
+| Deep Documentation (per-file/folder/feature) | `.claude/skills/deep-documentation/` | — | — |
 
 ### Code Review Agents
 

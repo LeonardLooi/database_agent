@@ -69,7 +69,7 @@ describe('ConversationService', () => {
 
     it('should prepend new conversation to the list', () => {
       service.newConversation();
-      const firstId = service.activeId();
+      const firstId = service.activeId()!;
       service.newConversation();
       expect(service.conversations()[0].id).not.toBe(firstId);
       expect(service.conversations().length).toBe(2);
