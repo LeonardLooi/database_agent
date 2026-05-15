@@ -35,6 +35,29 @@ export interface WsDone {
   routing_metadata?: RoutingMetadata;
 }
 
+export interface WsFileAttachment {
+  name: string;
+  mime_type: string;
+  content: string;
+  size_bytes: number;
+}
+
+export interface WsAgentResponse {
+  type: 'agent_response';
+  conversation_id: string;
+  explanation: string;
+  table_md: string;
+  csv: string;
+  sql_used: string[];
+  python_used: string;
+  truncated: boolean;
+  row_count: number;
+  provider: string;
+  model: string;
+  routing_metadata?: RoutingMetadata;
+  attachments: WsFileAttachment[];
+}
+
 export interface WsError {
   type: 'error';
   message: string;
@@ -75,7 +98,8 @@ export type WsIncoming =
   | WsPong
   | WsTitle
   | WsProviders
-  | WsClarificationRequest;
+  | WsClarificationRequest
+  | WsAgentResponse;
 
 // ── Application models ────────────────────────────────────────────────────────
 
@@ -83,6 +107,13 @@ export interface ClarificationState {
   message: string;
   candidates: string[];
   answered: boolean;
+}
+
+export interface MessageAttachment {
+  name: string;
+  mimeType: string;
+  content: string;
+  sizeBytes: number;
 }
 
 export interface ChatMessage {
@@ -96,6 +127,7 @@ export interface ChatMessage {
   error?: boolean;
   clarification?: ClarificationState;
   routingMetadata?: RoutingMetadata;
+  attachments?: MessageAttachment[];
 }
 
 export interface Conversation {

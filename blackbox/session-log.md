@@ -191,3 +191,38 @@
 - chatbot/frontend/src/app/core/services/conversation.service.spec.ts
 - chatbot/frontend/src/app/core/services/theme.service.spec.ts
 <!-- end-snapshot -->
+
+<!-- git-snapshot 2026-05-14T23:51:02Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-05-15T00:01:58Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/response_formatter.py
+- chatbot/backend/app/schemas/ws_messages.py
+- chatbot/backend/data/chatbot.db
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/package.json
+- chatbot/frontend/src/app/core/services/conversation.service.ts
+- chatbot/frontend/src/app/shared/components/message-bubble.component.ts
+- chatbot/frontend/src/app/shared/models/chat.models.ts
+- chatbot/frontend/src/styles.css
+<!-- end-snapshot -->
+
+<!-- git-snapshot 2026-05-15T00:12:49Z -->
+- .claude/smart-suggest.jsonl
+- blackbox/audit.md
+- blackbox/session-log.md
+- chatbot/backend/app/agent/response_formatter.py
+- chatbot/backend/app/schemas/ws_messages.py
+- chatbot/backend/data/chatbot.db
+- chatbot/frontend/package-lock.json
+- chatbot/frontend/package.json
+- chatbot/frontend/src/app/core/services/conversation.service.ts
+- chatbot/frontend/src/app/shared/components/message-bubble.component.ts
+- chatbot/frontend/src/app/shared/models/chat.models.ts
+- chatbot/frontend/src/styles.css
+<!-- end-snapshot -->

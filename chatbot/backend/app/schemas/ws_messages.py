@@ -130,6 +130,22 @@ class WsProviders(BaseModel):
 
 # ── agent frames (data query responses) ──────────────────────────────────────
 
+class WsFileAttachment(BaseModel):
+    """A downloadable file produced by the agent (e.g. CSV export).
+
+    Attributes:
+        name: Display filename including extension (e.g. ``"data.csv"``).
+        mime_type: MIME type (e.g. ``"text/csv"``).
+        content: Raw file content as a UTF-8 string.
+        size_bytes: Byte length of ``content``.
+    """
+
+    name: str
+    mime_type: str
+    content: str
+    size_bytes: int
+
+
 class WsAgentProgress(BaseModel):
     """Progress notification sent during agent loop execution.
 
@@ -189,3 +205,4 @@ class WsAgentResponse(BaseModel):
     row_count: int = 0
     provider: str
     model: str
+    attachments: list[WsFileAttachment] = Field(default_factory=list)

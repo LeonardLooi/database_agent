@@ -5,7 +5,7 @@ import io
 import structlog
 
 from app.agent.dataframe_store import DataFrameStore
-from app.schemas.ws_messages import WsAgentResponse
+from app.schemas.ws_messages import WsAgentResponse, WsFileAttachment
 from app.services.llm.base import AgentLoopResult
 
 logger = structlog.get_logger()
@@ -65,6 +65,17 @@ class ResponseFormatter:
                 table_md = _df_to_markdown(display_df)
                 truncated = result.truncated or (row_count > 50)
 
+        attachments: list[WsFileAttachment] = []
+        if csv_data:
+            attachments.append(
+                WsFileAttachment(
+                    name="data.csv",
+                    mime_type="text/csv",
+                    content=csv_data,
+                    size_bytes=len(csv_data.encode()),
+                )
+            )
+
         return WsAgentResponse(
             conversation_id=conversation_id,
             explanation=result.explanation,
@@ -76,6 +87,7 @@ class ResponseFormatter:
             row_count=row_count,
             provider=provider,
             model=model,
+            attachments=attachments,
         )
 
 

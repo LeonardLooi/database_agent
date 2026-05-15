@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   ChatMessage,
   Conversation,
+  WsAgentResponse,
   WsClarificationRequest,
   WsDelta,
   WsDone,
@@ -48,6 +49,10 @@ export class ConversationService {
   private readonly _streaming = signal(false);
   private readonly _loadedIds = new Set<string>();
 
+  // rAF batching: buffer delta text, flush at most once per animation frame
+  private pendingDelta = '';
+  private rafId: number | null = null;
+
   readonly conversations = this._conversations.asReadonly();
   readonly activeId = this._activeId.asReadonly();
   readonly streaming = this._streaming.asReadonly();
@@ -65,6 +70,7 @@ export class ConversationService {
       switch (msg.type) {
         case 'delta':                this.onDelta(msg);                         break;
         case 'done':                 this.onDone(msg);                          break;
+        case 'agent_response':       this.onAgentResponse(msg);                 break;
         case 'title':                this.onTitle(msg);                         break;
         case 'error':                this.onError();                            break;
         case 'clarification_request': this.onClarification(msg);               break;
@@ -184,22 +190,46 @@ export class ConversationService {
   }
 
   private onDelta(msg: WsDelta): void {
+    if (!this._activeId()) return;
+    this.pendingDelta += msg.content;
+    if (this.rafId === null) {
+      this.rafId = requestAnimationFrame(() => {
+        this.rafId = null;
+        this.flushDelta();
+      });
+    }
+  }
+
+  private flushDelta(): void {
     const convId = this._activeId();
-    if (!convId) return;
+    if (!convId || !this.pendingDelta) return;
+    const chunk = this.pendingDelta;
+    this.pendingDelta = '';
     this.patchConversation(convId, (c) => {
       const messages = [...c.messages];
       const lastIdx = messages.length - 1;
       if (messages[lastIdx]?.streaming) {
         messages[lastIdx] = {
           ...messages[lastIdx],
-          content: messages[lastIdx].content + msg.content,
+          content: messages[lastIdx].content + chunk,
         };
       }
       return { ...c, messages };
     });
   }
 
+  // Cancel a pending rAF and flush any buffered content synchronously.
+  // Must be called before done/error/agent_response to avoid content loss.
+  private cancelAndFlush(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.flushDelta();
+  }
+
   private onDone(msg: WsDone): void {
+    this.cancelAndFlush();
     this._streaming.set(false);
     const convId = msg.conversation_id || this._activeId();
     if (!convId) return;
@@ -220,6 +250,44 @@ export class ConversationService {
     });
   }
 
+  private onAgentResponse(msg: WsAgentResponse): void {
+    this.cancelAndFlush();
+    this._streaming.set(false);
+    const convId = msg.conversation_id || this._activeId();
+    if (!convId) return;
+
+    let content = msg.explanation;
+    if (msg.table_md) {
+      content += '\n\n' + msg.table_md;
+    }
+    if (msg.truncated && msg.row_count > 0) {
+      content += `\n\n_Showing first 50 of ${msg.row_count} rows_`;
+    }
+
+    this.patchConversation(convId, (c) => {
+      const messages = [...c.messages];
+      const lastIdx = messages.length - 1;
+      if (messages[lastIdx]?.streaming) {
+        messages[lastIdx] = {
+          ...messages[lastIdx],
+          content,
+          streaming: false,
+          provider: msg.provider,
+          model: msg.model,
+          tokenCount: Math.max(1, content.length >> 2),
+          routingMetadata: msg.routing_metadata,
+          attachments: msg.attachments.map((a) => ({
+            name: a.name,
+            mimeType: a.mime_type,
+            content: a.content,
+            sizeBytes: a.size_bytes,
+          })),
+        };
+      }
+      return { ...c, messages, updatedAt: new Date() };
+    });
+  }
+
   private onTitle(msg: WsTitle): void {
     this.patchConversation(msg.conversation_id, (c) => ({
       ...c,
@@ -228,6 +296,7 @@ export class ConversationService {
   }
 
   private onError(): void {
+    this.cancelAndFlush();
     this._streaming.set(false);
     const convId = this._activeId();
     if (!convId) return;
@@ -240,6 +309,7 @@ export class ConversationService {
   }
 
   private onClarification(msg: WsClarificationRequest): void {
+    this.cancelAndFlush();
     this._streaming.set(false);
     const convId = this._activeId();
     if (!convId) return;

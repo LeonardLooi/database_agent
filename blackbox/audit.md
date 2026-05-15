@@ -141,3 +141,24 @@ write this changes into a .md file
 <summary>Background command "Run full test suite synchronously" was stopped</summary>
 </task-notification>
 ---
+
+## 2026-05-14T23:44:22Z
+/ui-ux-pro-max /plan-mode-review goal: display formatted text, code block, formula, data table, image, file in the message bubble. rule: retain web socket, display the format while printing through web socket. (IMPORTANT) DO NOT RERENDER to the correct format after message displayed.
+---
+
+## 2026-05-14T23:52:06Z
+implement
+---
+
+## 2026-05-14T23:54:12Z
+1. include file attachment rendering (chips below the bubble). update backend to send file metadata.
+2. user message stay as plain text
+---
+
+## 2026-05-15T00:08:24Z
+implement phase 2
+---
+
+## 2026-05-15T00:21:11Z
+git push
+---
